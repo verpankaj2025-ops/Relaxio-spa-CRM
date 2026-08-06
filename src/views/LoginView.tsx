@@ -6,8 +6,8 @@ import { apiService } from '../services/api';
 export const LoginView: React.FC = () => {
   const { login, resetPassword, loading } = useAuth();
 
-  // Super Admin detection state
-  const [hasSuperAdmin, setHasSuperAdmin] = useState<boolean | null>(null);
+  // Super Admin & Auth status state
+  const [systemStatus, setSystemStatus] = useState<'READY' | 'UNINITIALIZED' | 'AUTH_MISSING' | null>(null);
   const [checkingSuperAdmin, setCheckingSuperAdmin] = useState<boolean>(true);
 
   // Sign In state (empty fields by default)
@@ -34,10 +34,10 @@ export const LoginView: React.FC = () => {
     let isMounted = true;
     async function checkStatus() {
       try {
-        const exists = await apiService.checkHasSuperAdmin();
-        if (isMounted) setHasSuperAdmin(exists);
+        const res = await apiService.checkSystemAuthStatus();
+        if (isMounted) setSystemStatus(res.status);
       } catch {
-        if (isMounted) setHasSuperAdmin(true);
+        if (isMounted) setSystemStatus('READY');
       } finally {
         if (isMounted) setCheckingSuperAdmin(false);
       }
@@ -89,10 +89,10 @@ export const LoginView: React.FC = () => {
       // Set success feedback
       setSuccessMessage(res.message || 'Super Admin account initialized successfully. Please sign in.');
       
-      // Permanently mark Super Admin as existing (disables initialization screen)
-      setHasSuperAdmin(true);
+      // Permanently mark Super Admin as existing and ready
+      setSystemStatus('READY');
 
-      // Pre-fill email field for convenience (or keep empty) and reset password inputs
+      // Pre-fill email field for convenience and reset password inputs
       setIdentifier(initEmail);
       setPassword('');
       setInitName('');
@@ -143,7 +143,36 @@ export const LoginView: React.FC = () => {
             <RefreshCw className="h-8 w-8 text-[#C5A059] animate-spin mx-auto" />
             <p className="text-xs text-gray-400">Verifying system initialization status...</p>
           </div>
-        ) : hasSuperAdmin === false ? (
+        ) : systemStatus === 'AUTH_MISSING' ? (
+          /* AUTHENTICATION USER MISSING WARNING VIEW */
+          <div className="p-8 rounded-3xl glass-panel border border-amber-500/40 shadow-2xl space-y-5 text-center">
+            <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <AlertCircle className="h-6 w-6" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="font-serif-luxury text-lg font-bold text-white">
+                Account Status Alert
+              </h2>
+              <p className="text-xs text-amber-200/90 leading-relaxed font-medium bg-amber-500/10 p-3 rounded-xl border border-amber-500/20">
+                Authentication account is missing.
+                <br />
+                Please contact the system administrator.
+              </p>
+            </div>
+            <p className="text-[11px] text-gray-400">
+              The user profile exists in the database, but no corresponding Supabase Auth credentials were found. Auto-creation is disabled.
+            </p>
+            <div className="pt-2 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setSystemStatus('READY')}
+                className="text-[11px] text-[#C5A059] hover:underline font-semibold cursor-pointer"
+              >
+                Go to Standard Sign In &rarr;
+              </button>
+            </div>
+          </div>
+        ) : systemStatus === 'UNINITIALIZED' ? (
           /* ONE-TIME INITIALIZE SUPER ADMIN SCREEN */
           <div className="p-8 rounded-3xl glass-panel border border-[#C5A059]/40 shadow-2xl space-y-6">
             <div className="border-b border-white/10 pb-3 text-center">
@@ -159,9 +188,18 @@ export const LoginView: React.FC = () => {
             </div>
 
             {initError && (
-              <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-xs text-red-300 text-center flex items-center justify-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{initError}</span>
+              <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30 text-xs text-red-300 text-center flex flex-col items-center justify-center gap-1.5">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{initError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSystemStatus('READY')}
+                  className="text-[11px] text-[#C5A059] hover:underline font-semibold cursor-pointer mt-1"
+                >
+                  Switch to Standard Login Screen &rarr;
+                </button>
               </div>
             )}
 
@@ -243,6 +281,16 @@ export const LoginView: React.FC = () => {
                 <span>{initLoading ? 'Creating Account...' : 'Create Super Admin Account'}</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSystemStatus('READY')}
+                  className="text-[11px] text-[#C5A059] hover:underline cursor-pointer"
+                >
+                  Already initialized or registered? Go to Sign In
+                </button>
+              </div>
             </form>
           </div>
         ) : (

@@ -208,40 +208,112 @@ async function logSupabaseAudit(userId: string, userName: string, userRole: stri
   }
 }
 
+export interface SystemAuthStatus {
+  profileExists: boolean;
+  authUserExists: boolean;
+  status: 'READY' | 'UNINITIALIZED' | 'AUTH_MISSING';
+  email?: string;
+}
+
 export const apiService = {
-  // Check if any Super Admin account exists in the system
-  async checkHasSuperAdmin(): Promise<boolean> {
-    if (isSupabaseConfigured) {
-      try {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('role', 'super_admin')
-          .limit(1);
-
-        if (profileData && profileData.length > 0) {
-          return true;
-        }
-
-        const { data: userData } = await supabase
-          .from('users')
-          .select('id')
-          .eq('role_id', 'super_admin')
-          .limit(1);
-
-        if (userData && userData.length > 0) {
-          return true;
-        }
-
-        return false;
-      } catch (err) {
-        console.warn('[CHECK SUPER ADMIN WARN]', err);
-        return false;
-      }
+  // Comprehensive status check verifying BOTH Auth user existence AND Profile existence
+  async checkSystemAuthStatus(): Promise<SystemAuthStatus> {
+    if (!isSupabaseConfigured) {
+      const users: User[] = getStorage(STORAGE_KEYS.USERS, []);
+      const hasSuperAdmin = users.some(u => u.role === 'super_admin');
+      return {
+        profileExists: hasSuperAdmin,
+        authUserExists: hasSuperAdmin,
+        status: hasSuperAdmin ? 'READY' : 'UNINITIALIZED',
+      };
     }
 
-    const users: User[] = getStorage(STORAGE_KEYS.USERS, []);
-    return users.some(u => u.role === 'super_admin');
+    try {
+      // 1. Check if profile exists in profiles or users table
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('id, email, role')
+        .eq('role', 'super_admin')
+        .limit(1);
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('id, email, role_id')
+        .or('role_id.eq.super_admin,email.eq.verpankaj2025@gmail.com')
+        .limit(1);
+
+      const profile = (profileData && profileData[0]) || (userData && userData[0]);
+
+      if (!profile) {
+        return {
+          profileExists: false,
+          authUserExists: false,
+          status: 'UNINITIALIZED',
+        };
+      }
+
+      const email = profile.email || 'verpankaj2025@gmail.com';
+
+      // 2. Profile exists. Now verify if Supabase Auth user exists for this email
+      let authUserExists = false;
+
+      // Check if profile ID is a valid Auth UUID created via Supabase Auth (not default fallback seed ID)
+      if (profile.id && profile.id !== 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' && !profile.id.startsWith('sa-')) {
+        authUserExists = true;
+      } else {
+        // Probe if user exists in Supabase Auth via signInWithOtp with shouldCreateUser: false
+        try {
+          const { error } = await supabase.auth.signInWithOtp({
+            email,
+            options: { shouldCreateUser: false },
+          });
+
+          if (!error || error.message?.toLowerCase().includes('rate limit') || error.status === 429) {
+            authUserExists = true;
+          } else if (
+            error.message?.toLowerCase().includes('not found') ||
+            error.message?.toLowerCase().includes('invalid') ||
+            error.message?.toLowerCase().includes('not allowed') ||
+            error.message?.toLowerCase().includes('signup')
+          ) {
+            authUserExists = false;
+          } else {
+            authUserExists = false;
+          }
+        } catch {
+          authUserExists = false;
+        }
+      }
+
+      if (authUserExists) {
+        return {
+          profileExists: true,
+          authUserExists: true,
+          status: 'READY',
+          email,
+        };
+      } else {
+        return {
+          profileExists: true,
+          authUserExists: false,
+          status: 'AUTH_MISSING',
+          email,
+        };
+      }
+    } catch (err) {
+      console.warn('[CHECK SYSTEM AUTH STATUS WARN]', err);
+      return {
+        profileExists: true,
+        authUserExists: true,
+        status: 'READY',
+      };
+    }
+  },
+
+  // Check if any Super Admin account exists in the system
+  async checkHasSuperAdmin(): Promise<boolean> {
+    const res = await this.checkSystemAuthStatus();
+    return res.profileExists;
   },
 
   // One-time initialization of Super Admin
@@ -268,7 +340,13 @@ export const apiService = {
       });
 
       if (authErr) {
-        console.error('[SUPER ADMIN INIT AUTH ERROR]', authErr);
+        console.error('[SUPER ADMIN INIT AUTH ERROR]', authErr.message || authErr);
+        if (authErr.message?.toLowerCase().includes('rate limit')) {
+          throw new Error('Supabase email rate limit exceeded. If the account was already created, please sign in directly on the login screen.');
+        }
+        if (authErr.message?.toLowerCase().includes('already registered') || authErr.message?.toLowerCase().includes('already exists')) {
+          throw new Error('An account with this email is already registered in Supabase. Please sign in directly.');
+        }
         throw new Error(authErr.message || 'Failed to create Super Admin in Supabase Auth.');
       }
 
@@ -336,25 +414,25 @@ export const apiService = {
     };
   },
 
-  // Auth Login (Strict Authentication Only - NO account creation)
+  // Auth Login (Strict Authentication Only)
   async login(identifier: string, password: string): Promise<{ user: User; token: string }> {
     if (isSupabaseConfigured) {
       let authUser: any = null;
       let authErr: any = null;
 
-      const emailToUse = identifier.trim();
+      const identifierClean = identifier.trim();
 
       // Step 1: FIRST authenticate using Supabase Auth signInWithPassword
-      if (emailToUse.includes('@')) {
+      if (identifierClean.includes('@')) {
         const res = await supabase.auth.signInWithPassword({
-          email: emailToUse,
+          email: identifierClean,
           password,
         });
         authUser = res.data?.user;
         authErr = res.error;
       } else {
         const res = await supabase.auth.signInWithPassword({
-          phone: emailToUse,
+          phone: identifierClean,
           password,
         });
         authUser = res.data?.user;
@@ -373,34 +451,38 @@ export const apiService = {
 
       console.log('[AUTH SUCCESS]', { id: authUser.id, email: authUser.email });
 
-      // Step 2: AFTER successful authentication, fetch profile from users/profiles table
+      // Step 2: AFTER successful authentication, fetch or ensure profile
       let fetchedUser: User | null = null;
-      
-      const { data: userRow, error: profileErr } = await supabase
-        .from('users')
-        .select('*')
-        .or(`id.eq.${authUser.id},email.eq.${authUser.email}`)
-        .maybeSingle();
-
-      if (profileErr) {
-        console.warn('[PROFILE LOOKUP WARN] Error querying users table:', profileErr);
-      }
-
-      if (userRow) {
-        fetchedUser = mapSupabaseUser(userRow);
-        console.log('[PROFILE LOOKUP] Profile found in users table:', fetchedUser);
+      if (authUser.email?.toLowerCase().trim() === 'verpankaj2025@gmail.com') {
+        fetchedUser = await this.ensureSuperAdminProfile(authUser);
+        console.log('[PROFILE LOOKUP] Super Admin profile ensured:', fetchedUser);
       } else {
-        console.log('[PROFILE LOOKUP] No database row found; constructing profile from auth metadata');
-        fetchedUser = {
-          id: authUser.id,
-          name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-          email: authUser.email || identifier,
-          phone: authUser.phone || '',
-          role: (authUser.user_metadata?.role as any) || 'staff',
-          status: 'active',
-          createdAt: authUser.created_at,
-          lastLogin: new Date().toISOString(),
-        };
+        const { data: userRow, error: profileErr } = await supabase
+          .from('users')
+          .select('*')
+          .or(`id.eq.${authUser.id},email.eq.${authUser.email}`)
+          .maybeSingle();
+
+        if (profileErr) {
+          console.warn('[PROFILE LOOKUP WARN] Error querying users table:', profileErr);
+        }
+
+        if (userRow) {
+          fetchedUser = mapSupabaseUser(userRow);
+          console.log('[PROFILE LOOKUP] Profile found in users table:', fetchedUser);
+        } else {
+          console.log('[PROFILE LOOKUP] No database row found; constructing profile from auth metadata');
+          fetchedUser = {
+            id: authUser.id,
+            name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+            email: authUser.email || identifier,
+            phone: authUser.phone || '',
+            role: (authUser.user_metadata?.role as any) || 'staff',
+            status: 'active',
+            createdAt: authUser.created_at,
+            lastLogin: new Date().toISOString(),
+          };
+        }
       }
 
       // Step 3: Structured Role Lookup Log
