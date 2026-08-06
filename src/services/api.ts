@@ -1,6 +1,6 @@
 import { User, Customer, Therapist, Room, Agent, Service, AuditLog, SpaSettings } from '../types';
 import { initialUsers, initialCustomers, initialTherapists, initialRooms, initialAgents, initialServices, initialAuditLogs, initialSettings } from '../data/mockInitialData';
-import { supabase, isSupabaseConfigured, uploadCustomerPhoto } from '../supabaseClient';
+import { supabase, isSupabaseConfigured, isDevMode, uploadCustomerPhoto } from '../supabaseClient';
 
 const API_BASE = '/api';
 
@@ -19,6 +19,9 @@ const STORAGE_KEYS = {
 
 // Safe LocalStorage Helpers
 function getStorage<T>(key: string, fallback: T): T {
+  if (!isSupabaseConfigured && !isDevMode) {
+    return fallback;
+  }
   try {
     const val = localStorage.getItem(key);
     return val ? JSON.parse(val) : fallback;
@@ -28,6 +31,10 @@ function getStorage<T>(key: string, fallback: T): T {
 }
 
 function setStorage<T>(key: string, value: T): void {
+  if (!isSupabaseConfigured && !isDevMode) {
+    console.error('Data modification blocked: Supabase environment variables are missing in production.');
+    return;
+  }
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {}
@@ -35,6 +42,9 @@ function setStorage<T>(key: string, value: T): void {
 
 // Initialize Local Storage fallback
 export function initLocalStorageFallback() {
+  if (!isSupabaseConfigured && !isDevMode) {
+    return;
+  }
   if (!getStorage(STORAGE_KEYS.USERS, null)) setStorage(STORAGE_KEYS.USERS, initialUsers);
   if (!getStorage(STORAGE_KEYS.CUSTOMERS, null)) setStorage(STORAGE_KEYS.CUSTOMERS, initialCustomers);
   if (!getStorage(STORAGE_KEYS.THERAPISTS, null)) setStorage(STORAGE_KEYS.THERAPISTS, initialTherapists);

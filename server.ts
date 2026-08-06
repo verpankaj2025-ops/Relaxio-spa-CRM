@@ -22,6 +22,15 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
+  // Security Headers Middleware
+  app.use((req: Request, res: Response, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
+
   // Helper for logging audit actions
   function logAudit(userId: string, userName: string, userRole: any, action: any, targetEntity: string, targetId: string | undefined, details: string, req: Request) {
     const log: AuditLog = {

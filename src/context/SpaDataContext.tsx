@@ -121,9 +121,9 @@ export const SpaDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [theme]);
 
   const toggleTheme = () => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    const newTheme: 'dark' | 'light' = theme === 'dark' ? 'light' : 'dark';
     setTheme(newTheme);
-    const updated = { ...settings, theme: newTheme };
+    const updated: SpaSettings = { ...settings, theme: newTheme };
     setSettings(updated);
     if (user) apiService.saveSettings(updated, user);
   };

@@ -280,21 +280,93 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
--- Storage RLS Policies
-CREATE POLICY "Public Read Access for Customer Photos"
+-- Storage RLS Policies (Authenticated Users Only)
+DROP POLICY IF EXISTS "Public Read Access for Customer Photos" ON storage.objects;
+DROP POLICY IF EXISTS "Public & Authenticated Upload for Customer Photos" ON storage.objects;
+DROP POLICY IF EXISTS "Public & Authenticated Update for Customer Photos" ON storage.objects;
+
+CREATE POLICY "Authenticated Read Access for Customer Photos"
 ON storage.objects FOR SELECT
+TO authenticated
 USING (bucket_id = 'customer-photos');
 
-CREATE POLICY "Public & Authenticated Upload for Customer Photos"
+CREATE POLICY "Authenticated Upload for Customer Photos"
 ON storage.objects FOR INSERT
+TO authenticated
 WITH CHECK (bucket_id = 'customer-photos');
 
-CREATE POLICY "Public & Authenticated Update for Customer Photos"
+CREATE POLICY "Authenticated Update for Customer Photos"
 ON storage.objects FOR UPDATE
+TO authenticated
 USING (bucket_id = 'customer-photos');
 
 -- ---------------------------------------------------------
--- 13. ROW LEVEL SECURITY (RLS) POLICIES
+-- 13. SECURITY HELPER FUNCTIONS
+-- ---------------------------------------------------------
+
+-- Helper function: Check if user is authenticated via Supabase Auth
+CREATE OR REPLACE FUNCTION is_authenticated()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN (auth.role() = 'authenticated');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Helper function: Get current user role from profiles or users table
+CREATE OR REPLACE FUNCTION get_current_user_role()
+RETURNS VARCHAR AS $$
+DECLARE
+  u_role VARCHAR;
+  u_email VARCHAR;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN 'anon';
+  END IF;
+
+  u_email := LOWER(COALESCE(auth.jwt() ->> 'email', ''));
+
+  IF u_email = 'verpankaj2025@gmail.com' THEN
+    RETURN 'super_admin';
+  END IF;
+
+  SELECT role INTO u_role FROM public.profiles WHERE id = auth.uid() AND is_active = true LIMIT 1;
+  IF u_role IS NOT NULL THEN
+    RETURN u_role;
+  END IF;
+
+  SELECT role_id INTO u_role FROM public.users WHERE (id = auth.uid() OR LOWER(email) = u_email) AND status = 'active' LIMIT 1;
+  IF u_role IS NOT NULL THEN
+    RETURN u_role;
+  END IF;
+
+  RETURN 'staff';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Role Check Functions
+CREATE OR REPLACE FUNCTION is_super_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN (is_authenticated() AND get_current_user_role() = 'super_admin');
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION is_admin_or_super()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN (is_authenticated() AND get_current_user_role() IN ('super_admin', 'admin'));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION is_active_staff()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN (is_authenticated() AND get_current_user_role() IN ('super_admin', 'admin', 'staff'));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- ---------------------------------------------------------
+-- 14. ROW LEVEL SECURITY (RLS) POLICIES
 -- ---------------------------------------------------------
 ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -309,18 +381,84 @@ ALTER TABLE visit_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 
--- General access policies allowing anon key or authenticated sessions
-CREATE POLICY "Allow read access to all" ON roles FOR SELECT USING (true);
-CREATE POLICY "Allow read access to all" ON users FOR SELECT USING (true);
-CREATE POLICY "Allow write access to users" ON users FOR ALL USING (true);
-CREATE POLICY "Allow all operations on profiles" ON profiles FOR ALL USING (true);
+-- Drop old insecure policies
+DROP POLICY IF EXISTS "Allow read access to all" ON roles;
+DROP POLICY IF EXISTS "Allow read access to all" ON users;
+DROP POLICY IF EXISTS "Allow write access to users" ON users;
+DROP POLICY IF EXISTS "Allow all operations on profiles" ON profiles;
+DROP POLICY IF EXISTS "Allow all operations on customers" ON customers;
+DROP POLICY IF EXISTS "Allow all operations on therapists" ON therapists;
+DROP POLICY IF EXISTS "Allow all operations on rooms" ON rooms;
+DROP POLICY IF EXISTS "Allow all operations on agents" ON agents;
+DROP POLICY IF EXISTS "Allow all operations on services" ON services;
+DROP POLICY IF EXISTS "Allow all operations on payments" ON payments;
+DROP POLICY IF EXISTS "Allow all operations on visit_history" ON visit_history;
+DROP POLICY IF EXISTS "Allow all operations on audit_logs" ON audit_logs;
+DROP POLICY IF EXISTS "Allow all operations on settings" ON settings;
 
-CREATE POLICY "Allow all operations on customers" ON customers FOR ALL USING (true);
-CREATE POLICY "Allow all operations on therapists" ON therapists FOR ALL USING (true);
-CREATE POLICY "Allow all operations on rooms" ON rooms FOR ALL USING (true);
-CREATE POLICY "Allow all operations on agents" ON agents FOR ALL USING (true);
-CREATE POLICY "Allow all operations on services" ON services FOR ALL USING (true);
-CREATE POLICY "Allow all operations on payments" ON payments FOR ALL USING (true);
-CREATE POLICY "Allow all operations on visit_history" ON visit_history FOR ALL USING (true);
-CREATE POLICY "Allow all operations on audit_logs" ON audit_logs FOR ALL USING (true);
-CREATE POLICY "Allow all operations on settings" ON settings FOR ALL USING (true);
+-- ROLES TABLE POLICIES
+CREATE POLICY "Roles - Authenticated Read" ON roles FOR SELECT TO authenticated USING (is_authenticated());
+CREATE POLICY "Roles - Super Admin Manage" ON roles FOR ALL TO authenticated USING (is_super_admin()) WITH CHECK (is_super_admin());
+
+-- PROFILES TABLE POLICIES
+CREATE POLICY "Profiles - Authenticated Read" ON profiles FOR SELECT TO authenticated USING (is_authenticated());
+CREATE POLICY "Profiles - User Own Insert" ON profiles FOR INSERT TO authenticated WITH CHECK (auth.uid() = id OR is_super_admin());
+CREATE POLICY "Profiles - User Own or Super Admin Update" ON profiles FOR UPDATE TO authenticated USING (auth.uid() = id OR is_super_admin()) WITH CHECK (auth.uid() = id OR is_super_admin());
+CREATE POLICY "Profiles - Super Admin Delete" ON profiles FOR DELETE TO authenticated USING (is_super_admin());
+
+-- USERS TABLE POLICIES
+CREATE POLICY "Users - Authenticated Read" ON users FOR SELECT TO authenticated USING (is_authenticated());
+CREATE POLICY "Users - Admin or Super Insert" ON users FOR INSERT TO authenticated WITH CHECK (is_admin_or_super());
+CREATE POLICY "Users - Admin or Super Update" ON users FOR UPDATE TO authenticated USING (is_super_admin() OR (is_admin_or_super() AND role_id = 'staff')) WITH CHECK (is_super_admin() OR (is_admin_or_super() AND role_id = 'staff'));
+CREATE POLICY "Users - Super Admin Delete" ON users FOR DELETE TO authenticated USING (is_super_admin());
+
+-- CUSTOMERS TABLE POLICIES
+CREATE POLICY "Customers - Active Staff Read" ON customers FOR SELECT TO authenticated USING (is_active_staff());
+CREATE POLICY "Customers - Active Staff Insert" ON customers FOR INSERT TO authenticated WITH CHECK (is_active_staff());
+CREATE POLICY "Customers - Active Staff Update" ON customers FOR UPDATE TO authenticated USING (is_active_staff()) WITH CHECK (is_active_staff());
+CREATE POLICY "Customers - Admin or Super Delete" ON customers FOR DELETE TO authenticated USING (is_admin_or_super());
+
+-- THERAPISTS TABLE POLICIES
+CREATE POLICY "Therapists - Active Staff Read" ON therapists FOR SELECT TO authenticated USING (is_active_staff());
+CREATE POLICY "Therapists - Admin or Super Insert" ON therapists FOR INSERT TO authenticated WITH CHECK (is_admin_or_super());
+CREATE POLICY "Therapists - Admin or Super Update" ON therapists FOR UPDATE TO authenticated USING (is_admin_or_super()) WITH CHECK (is_admin_or_super());
+CREATE POLICY "Therapists - Super Admin Delete" ON therapists FOR DELETE TO authenticated USING (is_super_admin());
+
+-- ROOMS TABLE POLICIES
+CREATE POLICY "Rooms - Active Staff Read" ON rooms FOR SELECT TO authenticated USING (is_active_staff());
+CREATE POLICY "Rooms - Admin or Super Insert" ON rooms FOR INSERT TO authenticated WITH CHECK (is_admin_or_super());
+CREATE POLICY "Rooms - Active Staff Status Update" ON rooms FOR UPDATE TO authenticated USING (is_active_staff()) WITH CHECK (is_active_staff());
+CREATE POLICY "Rooms - Super Admin Delete" ON rooms FOR DELETE TO authenticated USING (is_super_admin());
+
+-- AGENTS TABLE POLICIES
+CREATE POLICY "Agents - Active Staff Read" ON agents FOR SELECT TO authenticated USING (is_active_staff());
+CREATE POLICY "Agents - Admin or Super Insert" ON agents FOR INSERT TO authenticated WITH CHECK (is_admin_or_super());
+CREATE POLICY "Agents - Admin or Super Update" ON agents FOR UPDATE TO authenticated USING (is_admin_or_super()) WITH CHECK (is_admin_or_super());
+CREATE POLICY "Agents - Super Admin Delete" ON agents FOR DELETE TO authenticated USING (is_super_admin());
+
+-- SERVICES TABLE POLICIES
+CREATE POLICY "Services - Active Staff Read" ON services FOR SELECT TO authenticated USING (is_active_staff());
+CREATE POLICY "Services - Admin or Super Insert" ON services FOR INSERT TO authenticated WITH CHECK (is_admin_or_super());
+CREATE POLICY "Services - Admin or Super Update" ON services FOR UPDATE TO authenticated USING (is_admin_or_super()) WITH CHECK (is_admin_or_super());
+CREATE POLICY "Services - Super Admin Delete" ON services FOR DELETE TO authenticated USING (is_super_admin());
+
+-- PAYMENTS TABLE POLICIES
+CREATE POLICY "Payments - Active Staff Read" ON payments FOR SELECT TO authenticated USING (is_active_staff());
+CREATE POLICY "Payments - Active Staff Insert" ON payments FOR INSERT TO authenticated WITH CHECK (is_active_staff());
+CREATE POLICY "Payments - Admin or Super Update" ON payments FOR UPDATE TO authenticated USING (is_admin_or_super()) WITH CHECK (is_admin_or_super());
+CREATE POLICY "Payments - Admin or Super Delete" ON payments FOR DELETE TO authenticated USING (is_admin_or_super());
+
+-- VISIT HISTORY TABLE POLICIES
+CREATE POLICY "Visit History - Active Staff Read" ON visit_history FOR SELECT TO authenticated USING (is_active_staff());
+CREATE POLICY "Visit History - Active Staff Insert" ON visit_history FOR INSERT TO authenticated WITH CHECK (is_active_staff());
+CREATE POLICY "Visit History - Admin or Super Update" ON visit_history FOR UPDATE TO authenticated USING (is_admin_or_super()) WITH CHECK (is_admin_or_super());
+CREATE POLICY "Visit History - Admin or Super Delete" ON visit_history FOR DELETE TO authenticated USING (is_admin_or_super());
+
+-- AUDIT LOGS TABLE POLICIES
+CREATE POLICY "Audit Logs - Admin or Super Read" ON audit_logs FOR SELECT TO authenticated USING (is_admin_or_super());
+CREATE POLICY "Audit Logs - Active Staff Insert" ON audit_logs FOR INSERT TO authenticated WITH CHECK (is_active_staff());
+CREATE POLICY "Audit Logs - Super Admin Delete" ON audit_logs FOR DELETE TO authenticated USING (is_super_admin());
+
+-- SETTINGS TABLE POLICIES
+CREATE POLICY "Settings - Active Staff Read" ON settings FOR SELECT TO authenticated USING (is_active_staff());
+CREATE POLICY "Settings - Super Admin Manage" ON settings FOR ALL TO authenticated USING (is_super_admin()) WITH CHECK (is_super_admin());

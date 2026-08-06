@@ -1,0 +1,11 @@
+# Relaxio Spa Customer Relationship Management
+# Production Robots Directive
+
+User-agent: *
+Allow: /
+Allow: /public/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /dashboard/
+
+Sitemap: https://relaxio-spa.vercel.app/sitemap.xml

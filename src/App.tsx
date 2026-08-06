@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { SpaDataProvider, useSpaData } from './context/SpaDataContext';
+import { SpaDataProvider } from './context/SpaDataContext';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav, ActiveTab } from './components/BottomNav';
@@ -15,6 +15,8 @@ import { CustomerFormModal } from './components/CustomerFormModal';
 import { CustomerProfileModal } from './components/CustomerProfileModal';
 import { QuickSearchModal } from './components/QuickSearchModal';
 import { InvoicePrintModal } from './components/InvoicePrintModal';
+import { SupabaseMissingError } from './components/SupabaseMissingError';
+import { isSupabaseConfigured, isDevMode } from './supabaseClient';
 import { Customer } from './types';
 import { Shield, LogOut, UserCheck, X } from 'lucide-react';
 
@@ -29,6 +31,10 @@ const SpaAppContent: React.FC = () => {
   const [invoiceCustomer, setInvoiceCustomer] = useState<Customer | null>(null);
   const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+
+  if (!isSupabaseConfigured && !isDevMode) {
+    return <SupabaseMissingError />;
+  }
 
   if (!user) {
     return <LoginView />;

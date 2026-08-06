@@ -34,6 +34,21 @@ export const isSupabaseConfigured = Boolean(
     !supabaseAnonKey.includes('your-anon-key')
 );
 
+export const isDevMode = (() => {
+  try {
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+      if ((import.meta as any).env.DEV) return true;
+      if ((import.meta as any).env.MODE === 'development') return true;
+    }
+  } catch {}
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      if (process.env.NODE_ENV === 'development') return true;
+    }
+  } catch {}
+  return false;
+})();
+
 // Fallback to dummy endpoint if credentials aren't provided yet so app won't crash on load
 const fallbackUrl = 'https://xyzcompany.supabase.co';
 const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ9.placeholder';
