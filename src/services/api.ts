@@ -212,71 +212,111 @@ export const apiService = {
   // Auth Login
   async login(identifier: string, password: string): Promise<{ user: User; token: string }> {
     if (isSupabaseConfigured) {
-      try {
-        // First try finding user in Supabase users table
-        const { data: userRows, error } = await supabase
-          .from('users')
-          .select('*')
-          .or(`email.ilike.${identifier},phone.eq.${identifier}`)
-          .eq('status', 'active');
+      let authUser: any = null;
+      let authErr: any = null;
 
-        if (!error && userRows && userRows.length > 0) {
-          const matched = userRows[0];
-          const user = mapSupabaseUser(matched);
-          
-          // Update last_login
-          await supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', matched.id);
-          await logSupabaseAudit(user.id, user.name, user.role, 'LOGIN', 'system', undefined, `User logged in via ${user.email}`);
+      let emailToUse = identifier.trim();
+      if (!emailToUse.includes('@') && emailToUse === '9876543210') {
+        emailToUse = 'verpankaj2025@gmail.com';
+      }
 
-          const session = { user, token: `sb-token-${user.id}` };
-          setStorage(STORAGE_KEYS.SESSION, session);
-          return session;
-        }
+      // Step 1: FIRST authenticate using Supabase Auth signInWithPassword
+      if (emailToUse.includes('@')) {
+        const res = await supabase.auth.signInWithPassword({
+          email: emailToUse,
+          password,
+        });
+        authUser = res.data?.user;
+        authErr = res.error;
 
-        // Try Supabase Auth sign-in if email format
-        if (identifier.includes('@')) {
-          const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
-            email: identifier,
+        // Auto create/sign up Super Admin if account does not exist in Supabase Auth yet
+        if (authErr && emailToUse.toLowerCase() === 'verpankaj2025@gmail.com') {
+          console.log('[AUTH LOOKUP] Auto-signing up Super Admin...');
+          const signUpRes = await supabase.auth.signUp({
+            email: emailToUse,
             password,
+            options: { data: { name: 'Super Admin (Pankaj)', role: 'super_admin' } },
           });
-          if (!authErr && authData.user) {
-            const user: User = {
-              id: authData.user.id,
-              name: authData.user.user_metadata?.name || authData.user.email?.split('@')[0] || 'User',
-              email: authData.user.email || identifier,
-              phone: authData.user.phone || '',
-              role: (authData.user.user_metadata?.role as any) || 'staff',
-              status: 'active',
-              createdAt: authData.user.created_at,
-              lastLogin: new Date().toISOString(),
-            };
-            const session = { user, token: authData.session?.access_token || `sb-token-${user.id}` };
-            setStorage(STORAGE_KEYS.SESSION, session);
-            return session;
+          if (!signUpRes.error && signUpRes.data?.user) {
+            authUser = signUpRes.data.user;
+            authErr = null;
           }
         }
-      } catch (err) {
-        console.error('Supabase Auth error:', err);
+      } else {
+        const res = await supabase.auth.signInWithPassword({
+          phone: emailToUse,
+          password,
+        });
+        authUser = res.data?.user;
+        authErr = res.error;
       }
+
+      if (authErr) {
+        console.error('[AUTH ERROR]', authErr.message || authErr);
+        throw new Error(authErr.message || 'Invalid login credentials');
+      }
+
+      if (!authUser) {
+        console.error('[AUTH ERROR] No user object returned from Supabase Auth');
+        throw new Error('User not found');
+      }
+
+      console.log('[AUTH SUCCESS]', { id: authUser.id, email: authUser.email });
+
+      // Step 2: AFTER successful authentication, fetch profile from users/profiles table
+      let fetchedUser: User | null = null;
+      if (authUser.email?.toLowerCase().trim() === 'verpankaj2025@gmail.com') {
+        fetchedUser = await this.ensureSuperAdminProfile(authUser);
+        console.log('[PROFILE LOOKUP] Super Admin profile fetched:', fetchedUser);
+      } else {
+        const { data: userRow, error: profileErr } = await supabase
+          .from('users')
+          .select('*')
+          .or(`id.eq.${authUser.id},email.eq.${authUser.email}`)
+          .maybeSingle();
+
+        if (profileErr) {
+          console.warn('[PROFILE LOOKUP WARN] Error querying users table:', profileErr);
+        }
+
+        if (userRow) {
+          fetchedUser = mapSupabaseUser(userRow);
+          console.log('[PROFILE LOOKUP] Profile found in users table:', fetchedUser);
+        } else {
+          console.log('[PROFILE LOOKUP] No database row found; constructing profile from auth metadata');
+          fetchedUser = {
+            id: authUser.id,
+            name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+            email: authUser.email || identifier,
+            phone: authUser.phone || '',
+            role: (authUser.user_metadata?.role as any) || 'staff',
+            status: 'active',
+            createdAt: authUser.created_at,
+            lastLogin: new Date().toISOString(),
+          };
+        }
+      }
+
+      // Step 3: Structured Role Lookup Log
+      console.log('[ROLE LOOKUP]', { userId: fetchedUser.id, role: fetchedUser.role, email: fetchedUser.email });
+
+      // Step 4: Check if account is suspended
+      if (fetchedUser.status === 'suspended') {
+        console.warn('[AUTH ERROR] User account is suspended:', fetchedUser.id);
+        await supabase.auth.signOut();
+        throw new Error('Account suspended');
+      }
+
+      const session = { user: fetchedUser, token: `sb-token-${fetchedUser.id}` };
+      setStorage(STORAGE_KEYS.SESSION, session);
+      return session;
     }
 
-    // Server or Local Fallback
-    try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setStorage(STORAGE_KEYS.SESSION, data);
-        return data;
-      }
-    } catch {}
-
+    // Local Fallback if Supabase is not configured
     const users: User[] = getStorage(STORAGE_KEYS.USERS, initialUsers);
-    const user = users.find(u => (u.email.toLowerCase() === identifier.toLowerCase() || u.phone === identifier) && u.status === 'active');
-    if (!user) throw new Error('Invalid mobile/email or account suspended');
+    const user = users.find(u => u.email.toLowerCase() === identifier.toLowerCase() || u.phone === identifier);
+    if (!user) throw new Error('User not found');
+    if (user.status === 'suspended') throw new Error('Account suspended');
     const data = { user, token: `local-token-${user.id}` };
     setStorage(STORAGE_KEYS.SESSION, data);
     return data;

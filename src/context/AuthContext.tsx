@@ -30,10 +30,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [inactivityWarning, setInactivityWarning] = useState<boolean>(false);
 
   // Sync session with Supabase Auth or local storage
-  const syncUserFromAuth = async (authUser: any) => {
+  const syncUserFromAuth = async (authUser: any): Promise<User> => {
     if (!authUser) {
       setUser(null);
-      return;
+      throw new Error('Invalid mobile/email or account suspended');
     }
 
     const email = authUser.email || '';
@@ -41,29 +41,38 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Auto-recreate or update Super Admin profile in database
       const superAdminUser = await apiService.ensureSuperAdminProfile(authUser);
       setUser(superAdminUser);
-      return;
+      return superAdminUser;
     }
 
-    // Lookup user in Supabase or local storage
+    // Lookup user in Supabase or local storage AFTER authentication
     try {
       const users = await apiService.getUsers();
       const existing = users.find(u => u.email.toLowerCase() === email.toLowerCase() || u.id === authUser.id);
       if (existing) {
+        if (existing.status === 'suspended') {
+          await supabase.auth.signOut();
+          setUser(null);
+          throw new Error('Invalid mobile/email or account suspended');
+        }
         setUser(existing);
-      } else {
-        const newUser: User = {
-          id: authUser.id,
-          name: authUser.user_metadata?.name || email.split('@')[0] || 'User',
-          email,
-          phone: authUser.phone || '',
-          role: 'staff',
-          status: 'active',
-          createdAt: authUser.created_at || new Date().toISOString(),
-        };
-        setUser(newUser);
+        return existing;
       }
-    } catch {
-      setUser({
+      const newUser: User = {
+        id: authUser.id,
+        name: authUser.user_metadata?.name || email.split('@')[0] || 'User',
+        email,
+        phone: authUser.phone || '',
+        role: 'staff',
+        status: 'active',
+        createdAt: authUser.created_at || new Date().toISOString(),
+      };
+      setUser(newUser);
+      return newUser;
+    } catch (err: any) {
+      if (err.message === 'Invalid mobile/email or account suspended') {
+        throw err;
+      }
+      const fallbackUser: User = {
         id: authUser.id,
         name: email.split('@')[0] || 'User',
         email,
@@ -71,7 +80,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         role: 'staff',
         status: 'active',
         createdAt: new Date().toISOString(),
-      });
+      };
+      setUser(fallbackUser);
+      return fallbackUser;
     }
   };
 
@@ -178,43 +189,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const cleanId = identifier.trim();
 
     try {
-      if (isSupabaseConfigured && cleanId.includes('@')) {
-        // Try Supabase Auth sign-in
-        const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
-          email: cleanId,
-          password,
-        });
-
-        if (!authErr && authData.user) {
-          await syncUserFromAuth(authData.user);
-          setLastActivity(Date.now());
-          setInactivityWarning(false);
-          setLoading(false);
-          return;
-        }
-
-        // Auto create/sign up Super Admin if account does not exist in Supabase Auth yet
-        if (cleanId.toLowerCase() === 'verpankaj2025@gmail.com') {
-          const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-            email: cleanId,
-            password,
-            options: { data: { name: 'Super Admin', role: 'super_admin' } },
-          });
-
-          if (!signUpErr && signUpData.user) {
-            await syncUserFromAuth(signUpData.user);
-            setLastActivity(Date.now());
-            setInactivityWarning(false);
-            setLoading(false);
-            return;
-          }
-        }
-      }
-
-      // Check local user database or fallback
       const { user: loggedInUser } = await apiService.login(cleanId, password);
       
-      if (cleanId.toLowerCase() === 'verpankaj2025@gmail.com' || loggedInUser.email === 'verpankaj2025@gmail.com') {
+      if (cleanId.toLowerCase() === 'verpankaj2025@gmail.com' || loggedInUser.email?.toLowerCase() === 'verpankaj2025@gmail.com') {
         const superAdmin = await apiService.ensureSuperAdminProfile();
         setUser(superAdmin);
       } else {
@@ -223,6 +200,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       setLastActivity(Date.now());
       setInactivityWarning(false);
+    } catch (err: any) {
+      throw new Error(err.message || 'Invalid mobile/email or account suspended');
     } finally {
       setLoading(false);
     }
