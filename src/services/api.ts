@@ -209,16 +209,140 @@ async function logSupabaseAudit(userId: string, userName: string, userRole: stri
 }
 
 export const apiService = {
-  // Auth Login
+  // Check if any Super Admin account exists in the system
+  async checkHasSuperAdmin(): Promise<boolean> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'super_admin')
+          .limit(1);
+
+        if (profileData && profileData.length > 0) {
+          return true;
+        }
+
+        const { data: userData } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role_id', 'super_admin')
+          .limit(1);
+
+        if (userData && userData.length > 0) {
+          return true;
+        }
+
+        return false;
+      } catch (err) {
+        console.warn('[CHECK SUPER ADMIN WARN]', err);
+        return false;
+      }
+    }
+
+    const users: User[] = getStorage(STORAGE_KEYS.USERS, []);
+    return users.some(u => u.role === 'super_admin');
+  },
+
+  // One-time initialization of Super Admin
+  async initializeSuperAdmin(data: { name: string; email: string; password: string }): Promise<{ success: boolean; message: string }> {
+    const hasSuper = await this.checkHasSuperAdmin();
+    if (hasSuper) {
+      throw new Error('Super Admin setup is permanently disabled because a Super Admin account already exists.');
+    }
+
+    const cleanEmail = data.email.trim().toLowerCase();
+    const name = data.name.trim();
+
+    if (isSupabaseConfigured) {
+      // 1. Create user in Supabase Auth
+      const { data: authData, error: authErr } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password: data.password,
+        options: {
+          data: {
+            name: name,
+            role: 'super_admin',
+          },
+        },
+      });
+
+      if (authErr) {
+        console.error('[SUPER ADMIN INIT AUTH ERROR]', authErr);
+        throw new Error(authErr.message || 'Failed to create Super Admin in Supabase Auth.');
+      }
+
+      const authUser = authData.user;
+      if (!authUser) {
+        throw new Error('Failed to create Super Admin account in Supabase Auth.');
+      }
+
+      // 2. Insert into profiles table
+      try {
+        await supabase.from('profiles').upsert([
+          {
+            id: authUser.id,
+            email: cleanEmail,
+            full_name: name,
+            role: 'super_admin',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ], { onConflict: 'id' });
+      } catch (err) {
+        console.warn('[PROFILES INSERT WARN]', err);
+      }
+
+      // 3. Insert into users table
+      try {
+        await supabase.from('users').upsert([
+          {
+            id: authUser.id,
+            name: name,
+            email: cleanEmail,
+            phone: '',
+            role_id: 'super_admin',
+            status: 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ], { onConflict: 'id' });
+      } catch (err) {
+        console.warn('[USERS INSERT WARN]', err);
+      }
+
+      // Sign out immediately so user is NOT auto-logged in
+      await supabase.auth.signOut();
+    } else {
+      // Local fallback
+      const users: User[] = getStorage(STORAGE_KEYS.USERS, []);
+      const newSuperAdmin: User = {
+        id: `sa-${Date.now()}`,
+        name: name,
+        email: cleanEmail,
+        phone: '',
+        role: 'super_admin',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      };
+      users.unshift(newSuperAdmin);
+      setStorage(STORAGE_KEYS.USERS, users);
+    }
+
+    return {
+      success: true,
+      message: 'Super Admin account initialized successfully. Please sign in with your credentials.',
+    };
+  },
+
+  // Auth Login (Strict Authentication Only - NO account creation)
   async login(identifier: string, password: string): Promise<{ user: User; token: string }> {
     if (isSupabaseConfigured) {
       let authUser: any = null;
       let authErr: any = null;
 
-      let emailToUse = identifier.trim();
-      if (!emailToUse.includes('@') && emailToUse === '9876543210') {
-        emailToUse = 'verpankaj2025@gmail.com';
-      }
+      const emailToUse = identifier.trim();
 
       // Step 1: FIRST authenticate using Supabase Auth signInWithPassword
       if (emailToUse.includes('@')) {
@@ -228,20 +352,6 @@ export const apiService = {
         });
         authUser = res.data?.user;
         authErr = res.error;
-
-        // Auto create/sign up Super Admin if account does not exist in Supabase Auth yet
-        if (authErr && emailToUse.toLowerCase() === 'verpankaj2025@gmail.com') {
-          console.log('[AUTH LOOKUP] Auto-signing up Super Admin...');
-          const signUpRes = await supabase.auth.signUp({
-            email: emailToUse,
-            password,
-            options: { data: { name: 'Super Admin (Pankaj)', role: 'super_admin' } },
-          });
-          if (!signUpRes.error && signUpRes.data?.user) {
-            authUser = signUpRes.data.user;
-            authErr = null;
-          }
-        }
       } else {
         const res = await supabase.auth.signInWithPassword({
           phone: emailToUse,
@@ -265,36 +375,32 @@ export const apiService = {
 
       // Step 2: AFTER successful authentication, fetch profile from users/profiles table
       let fetchedUser: User | null = null;
-      if (authUser.email?.toLowerCase().trim() === 'verpankaj2025@gmail.com') {
-        fetchedUser = await this.ensureSuperAdminProfile(authUser);
-        console.log('[PROFILE LOOKUP] Super Admin profile fetched:', fetchedUser);
+      
+      const { data: userRow, error: profileErr } = await supabase
+        .from('users')
+        .select('*')
+        .or(`id.eq.${authUser.id},email.eq.${authUser.email}`)
+        .maybeSingle();
+
+      if (profileErr) {
+        console.warn('[PROFILE LOOKUP WARN] Error querying users table:', profileErr);
+      }
+
+      if (userRow) {
+        fetchedUser = mapSupabaseUser(userRow);
+        console.log('[PROFILE LOOKUP] Profile found in users table:', fetchedUser);
       } else {
-        const { data: userRow, error: profileErr } = await supabase
-          .from('users')
-          .select('*')
-          .or(`id.eq.${authUser.id},email.eq.${authUser.email}`)
-          .maybeSingle();
-
-        if (profileErr) {
-          console.warn('[PROFILE LOOKUP WARN] Error querying users table:', profileErr);
-        }
-
-        if (userRow) {
-          fetchedUser = mapSupabaseUser(userRow);
-          console.log('[PROFILE LOOKUP] Profile found in users table:', fetchedUser);
-        } else {
-          console.log('[PROFILE LOOKUP] No database row found; constructing profile from auth metadata');
-          fetchedUser = {
-            id: authUser.id,
-            name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-            email: authUser.email || identifier,
-            phone: authUser.phone || '',
-            role: (authUser.user_metadata?.role as any) || 'staff',
-            status: 'active',
-            createdAt: authUser.created_at,
-            lastLogin: new Date().toISOString(),
-          };
-        }
+        console.log('[PROFILE LOOKUP] No database row found; constructing profile from auth metadata');
+        fetchedUser = {
+          id: authUser.id,
+          name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+          email: authUser.email || identifier,
+          phone: authUser.phone || '',
+          role: (authUser.user_metadata?.role as any) || 'staff',
+          status: 'active',
+          createdAt: authUser.created_at,
+          lastLogin: new Date().toISOString(),
+        };
       }
 
       // Step 3: Structured Role Lookup Log
@@ -577,35 +683,36 @@ export const apiService = {
 
   // Ensure Super Admin Profile exists in Supabase profiles & users table
   async ensureSuperAdminProfile(authUser?: any): Promise<User> {
-    const superAdminEmail = 'verpankaj2025@gmail.com';
+    const superAdminEmail = authUser?.email || 'verpankaj2025@gmail.com';
     const userId = authUser?.id || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+    const name = authUser?.user_metadata?.name || 'Super Admin';
 
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && authUser) {
       try {
         // Upsert into profiles table
         await supabase.from('profiles').upsert([
           {
             id: userId,
             email: superAdminEmail,
-            full_name: 'Super Admin',
+            full_name: name,
             role: 'super_admin',
             is_active: true,
             updated_at: new Date().toISOString(),
           },
-        ], { onConflict: 'email' });
+        ], { onConflict: 'id' });
 
         // Upsert into users table
         await supabase.from('users').upsert([
           {
             id: userId,
-            name: 'Super Admin (Pankaj)',
+            name: name,
             email: superAdminEmail,
-            phone: '9876543210',
+            phone: authUser?.phone || '',
             role_id: 'super_admin',
             status: 'active',
             updated_at: new Date().toISOString(),
           },
-        ], { onConflict: 'email' });
+        ], { onConflict: 'id' });
       } catch (err) {
         console.error('Error auto-syncing Super Admin profile:', err);
       }
@@ -613,12 +720,12 @@ export const apiService = {
 
     const superAdminUser: User = {
       id: userId,
-      name: 'Super Admin (Pankaj)',
+      name: name,
       email: superAdminEmail,
-      phone: '9876543210',
+      phone: authUser?.phone || '',
       role: 'super_admin',
       status: 'active',
-      createdAt: new Date().toISOString(),
+      createdAt: authUser?.created_at || new Date().toISOString(),
       lastLogin: new Date().toISOString(),
     };
 
@@ -631,12 +738,7 @@ export const apiService = {
       try {
         const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: false });
         if (!error && data && data.length > 0) {
-          const list = data.map(mapSupabaseUser);
-          if (!list.some(u => u.email === 'verpankaj2025@gmail.com')) {
-            const superAdmin = await this.ensureSuperAdminProfile();
-            list.unshift(superAdmin);
-          }
-          return list;
+          return data.map(mapSupabaseUser);
         }
       } catch (err) {
         console.error('Supabase getUsers error:', err);
@@ -648,19 +750,7 @@ export const apiService = {
       if (res.ok) return await res.json();
     } catch {}
 
-    const list: User[] = getStorage(STORAGE_KEYS.USERS, initialUsers);
-    if (!list.some(u => u.email === 'verpankaj2025@gmail.com')) {
-      list.unshift({
-        id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-        name: 'Super Admin (Pankaj)',
-        email: 'verpankaj2025@gmail.com',
-        phone: '9876543210',
-        role: 'super_admin',
-        status: 'active',
-        createdAt: new Date().toISOString(),
-      });
-    }
-    return list;
+    return getStorage(STORAGE_KEYS.USERS, initialUsers);
   },
 
   async createUser(userData: Partial<User>, requester: User): Promise<User> {

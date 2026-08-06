@@ -190,18 +190,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     try {
       const { user: loggedInUser } = await apiService.login(cleanId, password);
-      
-      if (cleanId.toLowerCase() === 'verpankaj2025@gmail.com' || loggedInUser.email?.toLowerCase() === 'verpankaj2025@gmail.com') {
-        const superAdmin = await apiService.ensureSuperAdminProfile();
-        setUser(superAdmin);
-      } else {
-        setUser(loggedInUser);
-      }
-      
+      setUser(loggedInUser);
       setLastActivity(Date.now());
       setInactivityWarning(false);
     } catch (err: any) {
-      throw new Error(err.message || 'Invalid mobile/email or account suspended');
+      throw new Error(err.message || 'Invalid login credentials');
     } finally {
       setLoading(false);
     }
