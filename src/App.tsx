@@ -1,16 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SpaDataProvider } from './context/SpaDataContext';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav, ActiveTab } from './components/BottomNav';
-import { DashboardView } from './views/DashboardView';
-import { CustomerListView } from './views/CustomerListView';
-import { UserManagementView } from './views/UserManagementView';
-import { DataExportView } from './views/DataExportView';
-import { AuditLogsView } from './views/AuditLogsView';
-import { SettingsView } from './views/SettingsView';
-import { LoginView } from './views/LoginView';
 import { CustomerFormModal } from './components/CustomerFormModal';
 import { CustomerProfileModal } from './components/CustomerProfileModal';
 import { QuickSearchModal } from './components/QuickSearchModal';
@@ -19,6 +12,24 @@ import { SupabaseMissingError } from './components/SupabaseMissingError';
 import { isSupabaseConfigured, isDevMode } from './supabaseClient';
 import { Customer } from './types';
 import { Shield, LogOut, UserCheck, X } from 'lucide-react';
+
+// Dynamic Lazy Imports for Production Bundle Optimization
+const DashboardView = React.lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
+const CustomerListView = React.lazy(() => import('./views/CustomerListView').then(m => ({ default: m.CustomerListView })));
+const UserManagementView = React.lazy(() => import('./views/UserManagementView').then(m => ({ default: m.UserManagementView })));
+const DataExportView = React.lazy(() => import('./views/DataExportView').then(m => ({ default: m.DataExportView })));
+const AuditLogsView = React.lazy(() => import('./views/AuditLogsView').then(m => ({ default: m.AuditLogsView })));
+const SettingsView = React.lazy(() => import('./views/SettingsView').then(m => ({ default: m.SettingsView })));
+const LoginView = React.lazy(() => import('./views/LoginView').then(m => ({ default: m.LoginView })));
+
+const ViewLoader: React.FC = () => (
+  <div className="flex items-center justify-center min-h-[400px] w-full">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-8 h-8 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
+      <span className="text-xs text-gray-400 font-medium tracking-wider uppercase">Loading View...</span>
+    </div>
+  </div>
+);
 
 const SpaAppContent: React.FC = () => {
   const { user, loginAsRole, logout } = useAuth();
@@ -37,7 +48,11 @@ const SpaAppContent: React.FC = () => {
   }
 
   if (!user) {
-    return <LoginView />;
+    return (
+      <Suspense fallback={<ViewLoader />}>
+        <LoginView />
+      </Suspense>
+    );
   }
 
   return (
@@ -60,26 +75,28 @@ const SpaAppContent: React.FC = () => {
 
         {/* View Content Area */}
         <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
-          {activeTab === 'dashboard' && (
-            <DashboardView onOpenNewCustomer={() => setIsNewCustomerOpen(true)} />
-          )}
+          <Suspense fallback={<ViewLoader />}>
+            {activeTab === 'dashboard' && (
+              <DashboardView onOpenNewCustomer={() => setIsNewCustomerOpen(true)} />
+            )}
 
-          {activeTab === 'customers' && (
-            <CustomerListView
-              onOpenNewCustomer={() => setIsNewCustomerOpen(true)}
-              onEditCustomer={c => setEditingCustomer(c)}
-              onViewProfile={c => setViewingCustomer(c)}
-              onPrintInvoice={c => setInvoiceCustomer(c)}
-            />
-          )}
+            {activeTab === 'customers' && (
+              <CustomerListView
+                onOpenNewCustomer={() => setIsNewCustomerOpen(true)}
+                onEditCustomer={c => setEditingCustomer(c)}
+                onViewProfile={c => setViewingCustomer(c)}
+                onPrintInvoice={c => setInvoiceCustomer(c)}
+              />
+            )}
 
-          {activeTab === 'users' && <UserManagementView />}
+            {activeTab === 'users' && <UserManagementView />}
 
-          {activeTab === 'export' && <DataExportView />}
+            {activeTab === 'export' && <DataExportView />}
 
-          {activeTab === 'audit' && <AuditLogsView />}
+            {activeTab === 'audit' && <AuditLogsView />}
 
-          {activeTab === 'settings' && <SettingsView />}
+            {activeTab === 'settings' && <SettingsView />}
+          </Suspense>
         </main>
       </div>
 
