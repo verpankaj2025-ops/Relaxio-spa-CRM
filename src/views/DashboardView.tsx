@@ -45,7 +45,7 @@ export const DashboardView: React.FC<{ onOpenNewCustomer: () => void }> = ({ onO
             {settings.currencySymbol}{stats.todayRevenue.toLocaleString()}
           </p>
           <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1">
-            <span className="text-emerald-400 font-semibold">+14%</span> vs yesterday
+            <span className="text-[#D4AF37] font-semibold">{stats.todayCustomersCount} Check-ins</span> today
           </p>
         </div>
 
@@ -207,23 +207,27 @@ export const DashboardView: React.FC<{ onOpenNewCustomer: () => void }> = ({ onO
           {/* Quick Room Status Matrix */}
           <div className="pt-4 border-t border-white/10 space-y-2">
             <p className="text-xs font-bold text-gray-300">Live Room Status</p>
-            <div className="grid grid-cols-3 gap-2">
-              {rooms.map(r => (
-                <div
-                  key={r.id}
-                  className={`p-2 rounded-xl text-center text-[10px] font-bold border ${
-                    r.status === 'occupied'
-                      ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
-                      : r.status === 'available'
-                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                      : 'bg-gray-500/20 border-gray-500/40 text-gray-400'
-                  }`}
-                >
-                  <p>{r.roomNumber}</p>
-                  <p className="text-[9px] font-normal uppercase">{r.status}</p>
-                </div>
-              ))}
-            </div>
+            {rooms.length === 0 ? (
+              <p className="text-[11px] text-gray-400 py-2 italic text-center">No rooms configured yet. Add rooms in Settings.</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {rooms.map(r => (
+                  <div
+                    key={r.id}
+                    className={`p-2 rounded-xl text-center text-[10px] font-bold border ${
+                      r.status === 'occupied'
+                        ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                        : r.status === 'available'
+                        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                        : 'bg-gray-500/20 border-gray-500/40 text-gray-400'
+                    }`}
+                  >
+                    <p>{r.roomNumber}</p>
+                    <p className="text-[9px] font-normal uppercase">{r.status}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

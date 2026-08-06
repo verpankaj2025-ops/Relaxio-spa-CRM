@@ -68,13 +68,13 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
       const outTime = now.toTimeString().substring(0, 5);
       setCheckInTime(inTime);
       setCheckOutTime(outTime);
-      setRoomId(rooms[0]?.id || 'rm-101');
-      setTherapistId(therapists[0]?.id || 'th-1');
+      setRoomId(rooms[0]?.id || '');
+      setTherapistId(therapists[0]?.id || '');
       setAmountPaid(2500);
       setPaymentMethod('UPI');
       setCustomerType('Walk In');
       setAgentId('');
-      setSelectedServices(services.length > 0 ? [services[0].name] : ['Deep Tissue Full Body Massage']);
+      setSelectedServices(services.length > 0 ? [services[0].name] : []);
       setRemarks('');
       setPhotoUrl('');
       setStatus('Running');
@@ -305,11 +305,15 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                 onChange={e => setRoomId(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-black/40 light:bg-gray-100 border border-white/10 text-white light:text-gray-900 focus:border-[#D4AF37] focus:outline-none"
               >
-                {rooms.map(r => (
-                  <option key={r.id} value={r.id} className="bg-gray-900">
-                    {r.roomNumber} ({r.type}) - {r.status.toUpperCase()}
-                  </option>
-                ))}
+                {rooms.length === 0 ? (
+                  <option value="" className="bg-gray-900">No rooms added yet (Select None)</option>
+                ) : (
+                  rooms.map(r => (
+                    <option key={r.id} value={r.id} className="bg-gray-900">
+                      {r.roomNumber} ({r.type}) - {r.status.toUpperCase()}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 
@@ -320,11 +324,15 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                 onChange={e => setTherapistId(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-black/40 light:bg-gray-100 border border-white/10 text-white light:text-gray-900 focus:border-[#D4AF37] focus:outline-none"
               >
-                {therapists.map(t => (
-                  <option key={t.id} value={t.id} className="bg-gray-900">
-                    {t.name} ({t.specialization})
-                  </option>
-                ))}
+                {therapists.length === 0 ? (
+                  <option value="" className="bg-gray-900">No therapists added yet (Select None)</option>
+                ) : (
+                  therapists.map(t => (
+                    <option key={t.id} value={t.id} className="bg-gray-900">
+                      {t.name} ({t.specialization})
+                    </option>
+                  ))
+                )}
               </select>
             </div>
           </div>
@@ -403,24 +411,28 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           <div>
             <label className="block text-xs font-semibold text-gray-300 mb-1.5">Services Taken</label>
             <div className="flex flex-wrap gap-2 max-h-28 overflow-y-auto p-2 bg-black/20 rounded-2xl border border-white/5">
-              {services.map(srv => {
-                const isSelected = selectedServices.includes(srv.name);
-                return (
-                  <button
-                    key={srv.id}
-                    type="button"
-                    onClick={() => handleToggleService(srv.name)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                      isSelected
-                        ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/50 font-semibold'
-                        : 'bg-white/5 text-gray-400 border border-white/5 hover:border-white/20'
-                    }`}
-                  >
-                    {isSelected && <Check className="h-3 w-3" />}
-                    <span>{srv.name} ({settings.currencySymbol}{srv.price})</span>
-                  </button>
-                );
-              })}
+              {services.length === 0 ? (
+                <p className="text-xs text-gray-400 italic py-1 px-2">No services configured yet. Add services in Settings & Backups tab.</p>
+              ) : (
+                services.map(srv => {
+                  const isSelected = selectedServices.includes(srv.name);
+                  return (
+                    <button
+                      key={srv.id}
+                      type="button"
+                      onClick={() => handleToggleService(srv.name)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-[#D4AF37]/20 text-[#D4AF37] border border-[#D4AF37]/50 font-semibold'
+                          : 'bg-white/5 text-gray-400 border border-white/5 hover:border-white/20'
+                      }`}
+                    >
+                      {isSelected && <Check className="h-3 w-3" />}
+                      <span>{srv.name} ({settings.currencySymbol}{srv.price})</span>
+                    </button>
+                  );
+                })
+              )}
             </div>
           </div>
 

@@ -298,21 +298,27 @@ export const SettingsView: React.FC = () => {
             </button>
           </form>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {therapists.map(t => (
-              <div key={t.id} className="p-4 rounded-2xl glass-panel border border-white/10 space-y-2 text-xs">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-white text-sm">{t.name}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 uppercase font-semibold">{t.status}</span>
+          {therapists.length === 0 ? (
+            <div className="p-8 text-center text-gray-400 glass-panel rounded-2xl border border-white/10 text-xs">
+              No therapists added yet. Use the form above to add your first therapist to the live database.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {therapists.map(t => (
+                <div key={t.id} className="p-4 rounded-2xl glass-panel border border-white/10 space-y-2 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-white text-sm">{t.name}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 uppercase font-semibold">{t.status}</span>
+                  </div>
+                  <p className="text-gray-400">{t.specialization}</p>
+                  <div className="flex justify-between pt-2 border-t border-white/5 text-gray-300">
+                    <span>Sessions: {t.totalSessions}</span>
+                    <span className="font-bold text-[#D4AF37]">{settings.currencySymbol}{t.totalRevenue.toLocaleString()}</span>
+                  </div>
                 </div>
-                <p className="text-gray-400">{t.specialization}</p>
-                <div className="flex justify-between pt-2 border-t border-white/5 text-gray-300">
-                  <span>Sessions: {t.totalSessions}</span>
-                  <span className="font-bold text-[#D4AF37]">{settings.currencySymbol}{t.totalRevenue.toLocaleString()}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -343,17 +349,23 @@ export const SettingsView: React.FC = () => {
             </button>
           </form>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {rooms.map(r => (
-              <div key={r.id} className="p-4 rounded-2xl glass-panel border border-white/10 text-xs text-center space-y-1">
-                <p className="font-bold text-white text-base">{r.roomNumber}</p>
-                <p className="text-gray-400 text-[11px]">{r.type}</p>
-                <span className={`inline-block mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${r.status === 'occupied' ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
-                  {r.status}
-                </span>
-              </div>
-            ))}
-          </div>
+          {rooms.length === 0 ? (
+            <div className="p-8 text-center text-gray-400 glass-panel rounded-2xl border border-white/10 text-xs">
+              No spa rooms added yet. Use the form above to add your first room to the live database.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {rooms.map(r => (
+                <div key={r.id} className="p-4 rounded-2xl glass-panel border border-white/10 text-xs text-center space-y-1">
+                  <p className="font-bold text-white text-base">{r.roomNumber}</p>
+                  <p className="text-gray-400 text-[11px]">{r.type}</p>
+                  <span className={`inline-block mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${r.status === 'occupied' ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                    {r.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -388,18 +400,24 @@ export const SettingsView: React.FC = () => {
             </button>
           </form>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {agents.map(a => (
-              <div key={a.id} className="p-4 rounded-2xl glass-panel border border-white/10 space-y-2 text-xs">
-                <p className="font-bold text-white text-sm">{a.name}</p>
-                <p className="text-gray-400">{a.phone}</p>
-                <div className="flex justify-between pt-2 border-t border-white/5 text-gray-300">
-                  <span>Commission: <strong className="text-[#D4AF37]">{a.commissionPct}%</strong></span>
-                  <span>Referrals: {a.totalReferrals}</span>
+          {agents.length === 0 ? (
+            <div className="p-8 text-center text-gray-400 glass-panel rounded-2xl border border-white/10 text-xs">
+              No partner agents added yet. Use the form above to add your first agent to the live database.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {agents.map(a => (
+                <div key={a.id} className="p-4 rounded-2xl glass-panel border border-white/10 space-y-2 text-xs">
+                  <p className="font-bold text-white text-sm">{a.name}</p>
+                  <p className="text-gray-400">{a.phone}</p>
+                  <div className="flex justify-between pt-2 border-t border-white/5 text-gray-300">
+                    <span>Commission: <strong className="text-[#D4AF37]">{a.commissionPct}%</strong></span>
+                    <span>Referrals: {a.totalReferrals}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -434,17 +452,23 @@ export const SettingsView: React.FC = () => {
             </button>
           </form>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {services.map(s => (
-              <div key={s.id} className="p-4 rounded-2xl glass-panel border border-white/10 flex justify-between items-center text-xs">
-                <div>
-                  <p className="font-bold text-white text-sm">{s.name}</p>
-                  <p className="text-gray-400 text-[11px]">{s.durationMins} Mins duration</p>
+          {services.length === 0 ? (
+            <div className="p-8 text-center text-gray-400 glass-panel rounded-2xl border border-white/10 text-xs">
+              No therapy services added yet. Use the form above to add your first service to the live database.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {services.map(s => (
+                <div key={s.id} className="p-4 rounded-2xl glass-panel border border-white/10 flex justify-between items-center text-xs">
+                  <div>
+                    <p className="font-bold text-white text-sm">{s.name}</p>
+                    <p className="text-gray-400 text-[11px]">{s.durationMins} Mins duration</p>
+                  </div>
+                  <span className="font-bold text-[#D4AF37] text-base">{settings.currencySymbol}{s.price}</span>
                 </div>
-                <span className="font-bold text-[#D4AF37] text-base">{settings.currencySymbol}{s.price}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

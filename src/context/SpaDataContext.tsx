@@ -229,7 +229,7 @@ export const SpaDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   });
   const sortedTherapists = Object.values(therapistRevenues).sort((a, b) => b.revenue - a.revenue);
-  const topTherapistName = sortedTherapists.length > 0 ? sortedTherapists[0].name : 'Maya Lin';
+  const topTherapistName = sortedTherapists.length > 0 ? sortedTherapists[0].name : 'None';
 
   // Top Agent
   const agentRevenues: Record<string, { name: string; revenue: number }> = {};
@@ -240,12 +240,12 @@ export const SpaDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   });
   const sortedAgents = Object.values(agentRevenues).sort((a, b) => b.revenue - a.revenue);
-  const topAgentName = sortedAgents.length > 0 ? sortedAgents[0].name : 'Taj Hotel Concierge';
+  const topAgentName = sortedAgents.length > 0 ? sortedAgents[0].name : 'None';
 
   // Room Occupancy
-  const totalRoomsCount = rooms.length || 6;
+  const totalRoomsCount = rooms.length || 1;
   const occupiedRoomsCount = rooms.filter(r => r.status === 'occupied').length || runningSessionsCount;
-  const roomOccupancyPct = Math.round((occupiedRoomsCount / totalRoomsCount) * 100);
+  const roomOccupancyPct = rooms.length > 0 ? Math.round((occupiedRoomsCount / totalRoomsCount) * 100) : 0;
 
   // Payment Breakdown
   const paymentBreakdown = { Cash: 0, UPI: 0, Card: 0, Wallet: 0 };
@@ -278,16 +278,23 @@ export const SpaDataProvider: React.FC<{ children: ReactNode }> = ({ children })
     customers: revenueTrendMap[key].customers,
   }));
 
-  // Daily Customer Trend
-  const dailyCustomerTrend = [
-    { day: 'Mon', count: 12 },
-    { day: 'Tue', count: 15 },
-    { day: 'Wed', count: 18 },
-    { day: 'Thu', count: 14 },
-    { day: 'Fri', count: 24 },
-    { day: 'Sat', count: 32 },
-    { day: 'Sun', count: 28 },
-  ];
+  // Daily Customer Trend (7-day live counts)
+  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayCountsMap: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+  
+  customers.forEach(c => {
+    if (c.status !== 'Cancelled' && c.visitDate) {
+      const dayName = daysOfWeek[new Date(c.visitDate).getDay()];
+      if (dayCountsMap[dayName] !== undefined) {
+        dayCountsMap[dayName] += 1;
+      }
+    }
+  });
+
+  const dailyCustomerTrend = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => ({
+    day,
+    count: dayCountsMap[day] || 0,
+  }));
 
   // Customer Type Breakdown
   const typeCounts: Record<string, number> = { 'Walk In': 0, 'Agent Customer': 0, Referral: 0, Membership: 0 };

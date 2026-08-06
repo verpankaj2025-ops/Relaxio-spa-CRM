@@ -126,7 +126,14 @@ export const UserManagementView: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 text-gray-200">
-            {users.map(u => (
+            {users.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-8 text-center text-gray-400">
+                  No staff user accounts found in database. Click "Provision New User" to create one.
+                </td>
+              </tr>
+            ) : (
+              users.map(u => (
               <tr key={u.id} className="hover:bg-white/5 transition-colors">
                 <td className="p-4 font-bold text-white">{u.name}</td>
                 <td className="p-4">
@@ -182,7 +189,7 @@ export const UserManagementView: React.FC = () => {
                   </div>
                 </td>
               </tr>
-            ))}
+            )))}
           </tbody>
         </table>
       </div>
