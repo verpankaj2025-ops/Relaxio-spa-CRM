@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-cinzel: 'Cinzel', serif;
+    --font-sans: 'Plus Jakarta Sans', sans-serif;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #0A0A0B;
+    color: #E0E0E0;
+  }
+
+  h1, h2, h3, .font-serif-luxury {
+    font-family: var(--font-cinzel);
+  }
+}
+
+/* Custom Luxury Helpers - Elegant Dark */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #F3E5AB 0%, #C5A059 50%, #9A7B3E 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-border-glow {
+  box-shadow: 0 0 15px rgba(197, 160, 89, 0.15);
+}
+
+.gold-button-gradient {
+  background: linear-gradient(135deg, #D4AF37 0%, #C5A059 50%, #A38038 100%);
+  color: #0A0A0B;
+  font-weight: 600;
+}
+
+.gold-button-gradient:hover {
+  background: linear-gradient(135deg, #E5C158 0%, #D4AF37 50%, #C5A059 100%);
+}
+
+.glass-panel {
+  background: rgba(17, 17, 19, 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(197, 160, 89, 0.2);
+}
+
+.light .glass-panel {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(197, 160, 89, 0.25);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0A0B;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(197, 160, 89, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(197, 160, 89, 0.6);
+}
+
+/* Printable Invoice CSS */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area, .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    color: #000 !important;
+    background: #fff !important;
+    padding: 20px;
+  }
+}
+

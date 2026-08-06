@@ -1,0 +1,8 @@
+{
+  "name": "Relaxio Spa Customer Management System",
+  "description": "Mobile-first customer management, billing, therapist tracking, audit log, and analytics system for Relaxio Spa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

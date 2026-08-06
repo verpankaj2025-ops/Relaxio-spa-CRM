@@ -1,0 +1,22 @@
+{
+  "short_name": "Relaxio Spa",
+  "name": "Relaxio Spa Customer Management System",
+  "icons": [
+    {
+      "src": "pwa-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "pwa-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0d0d11",
+  "theme_color": "#16161e",
+  "display": "standalone",
+  "orientation": "portrait",
+  "description": "Relaxio Spa Customer Management System"
+}
