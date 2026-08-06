@@ -11,7 +11,7 @@ import { InvoicePrintModal } from './components/InvoicePrintModal';
 import { SupabaseMissingError } from './components/SupabaseMissingError';
 import { isSupabaseConfigured, isDevMode } from './supabaseClient';
 import { Customer } from './types';
-import { Shield, LogOut, UserCheck, X } from 'lucide-react';
+import { Shield, LogOut, X } from 'lucide-react';
 
 // Dynamic Lazy Imports for Production Bundle Optimization
 const DashboardView = React.lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
@@ -32,7 +32,7 @@ const ViewLoader: React.FC = () => (
 );
 
 const SpaAppContent: React.FC = () => {
-  const { user, loginAsRole, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
 
   // Modal States
@@ -164,54 +164,6 @@ const SpaAppContent: React.FC = () => {
                   {user.role.replace('_', ' ')}
                 </span>
                 <span className="text-[10px] text-emerald-400 font-semibold">Active Session</span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Switch Persona Demo</p>
-              <div className="grid grid-cols-1 gap-1.5 text-xs">
-                <button
-                  onClick={() => {
-                    loginAsRole('super_admin');
-                    setIsRoleModalOpen(false);
-                  }}
-                  className={`p-2.5 rounded-xl border font-semibold text-left transition-all cursor-pointer flex items-center justify-between ${
-                    user.role === 'super_admin'
-                      ? 'bg-[#C5A059]/20 border-[#C5A059] text-[#C5A059]'
-                      : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
-                  }`}
-                >
-                  <span>Super Admin</span>
-                  {user.role === 'super_admin' && <UserCheck className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={() => {
-                    loginAsRole('admin');
-                    setIsRoleModalOpen(false);
-                  }}
-                  className={`p-2.5 rounded-xl border font-semibold text-left transition-all cursor-pointer flex items-center justify-between ${
-                    user.role === 'admin'
-                      ? 'bg-blue-500/20 border-blue-500 text-blue-300'
-                      : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
-                  }`}
-                >
-                  <span>Admin</span>
-                  {user.role === 'admin' && <UserCheck className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={() => {
-                    loginAsRole('staff');
-                    setIsRoleModalOpen(false);
-                  }}
-                  className={`p-2.5 rounded-xl border font-semibold text-left transition-all cursor-pointer flex items-center justify-between ${
-                    user.role === 'staff'
-                      ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
-                      : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
-                  }`}
-                >
-                  <span>Staff Desk</span>
-                  {user.role === 'staff' && <UserCheck className="h-4 w-4" />}
-                </button>
               </div>
             </div>
 

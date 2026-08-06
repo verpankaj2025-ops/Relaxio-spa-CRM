@@ -100,24 +100,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           if (parsed.user?.email === 'verpankaj2025@gmail.com') {
             const superAdmin = await apiService.ensureSuperAdminProfile(parsed.user);
             setUser(superAdmin);
-          } else {
+          } else if (parsed.user) {
             setUser(parsed.user);
+          } else {
+            setUser(null);
           }
         } else if (mounted) {
-          // Default initial session for Super Admin verpankaj2025@gmail.com
-          const defaultSuperAdmin: User = {
-            id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-            name: 'Super Admin (Pankaj)',
-            email: 'verpankaj2025@gmail.com',
-            phone: '9876543210',
-            role: 'super_admin',
-            status: 'active',
-            createdAt: new Date().toISOString(),
-          };
-          setUser(defaultSuperAdmin);
+          // No saved session: require authentication
+          setUser(null);
         }
       } catch {
-        if (mounted) setUser(initialUsers[0]);
+        if (mounted) setUser(null);
       }
       if (mounted) setLoading(false);
     }
@@ -246,30 +239,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const loginAsRole = (role: UserRole) => {
-    if (role === 'super_admin') {
-      const superAdmin: User = {
-        id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
-        name: 'Super Admin (Pankaj)',
-        email: 'verpankaj2025@gmail.com',
-        phone: '9876543210',
-        role: 'super_admin',
-        status: 'active',
-        createdAt: new Date().toISOString(),
-      };
-      setUser(superAdmin);
-      try {
-        localStorage.setItem('relaxio_session_v1', JSON.stringify({ user: superAdmin, token: 'sb-super-admin-token' }));
-      } catch {}
-    } else {
-      const target = initialUsers.find(u => u.role === role) || initialUsers[0];
-      setUser(target);
-      try {
-        localStorage.setItem('relaxio_session_v1', JSON.stringify({ user: target, token: `demo-token-${target.id}` }));
-      } catch {}
-    }
-    setLastActivity(Date.now());
-    setInactivityWarning(false);
+  const loginAsRole = (_role: UserRole) => {
+    console.warn('Demo login bypass is disabled. Please authenticate using valid credentials.');
   };
 
   const logout = async (reason?: string) => {

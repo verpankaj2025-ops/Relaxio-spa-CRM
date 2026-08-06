@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { Sparkles, Phone, Mail, Lock, KeyRound, ShieldCheck, UserCheck, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Sparkles, Mail, Lock, ShieldCheck, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { UserRole } from '../types';
 
 export const LoginView: React.FC = () => {
-  const { login, resetPassword, loginAsRole, loading } = useAuth();
+  const { login, resetPassword, loading } = useAuth();
 
-  const [identifier, setIdentifier] = useState('verpankaj2025@gmail.com');
-  const [password, setPassword] = useState('password123');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
@@ -133,36 +132,6 @@ export const LoginView: React.FC = () => {
               <ArrowRight className="h-4 w-4" />
             </button>
           </form>
-
-          {/* Quick Demo Login Swapper */}
-          <div className="pt-4 border-t border-white/10 space-y-2">
-            <p className="text-[11px] font-semibold text-center text-gray-400">
-              ⚡ Quick Demo Login (Select Role)
-            </p>
-            <div className="grid grid-cols-3 gap-1.5 text-[10px]">
-              <button
-                type="button"
-                onClick={() => loginAsRole('super_admin')}
-                className="p-2 rounded-xl bg-[#C5A059]/15 border border-[#C5A059]/30 text-[#C5A059] font-bold hover:bg-[#C5A059]/25 transition-all cursor-pointer text-center"
-              >
-                Super Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => loginAsRole('admin')}
-                className="p-2 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-300 font-bold hover:bg-blue-500/25 transition-all cursor-pointer text-center"
-              >
-                Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => loginAsRole('staff')}
-                className="p-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold hover:bg-emerald-500/25 transition-all cursor-pointer text-center"
-              >
-                Staff Desk
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Security Footer */}
