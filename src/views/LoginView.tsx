@@ -4,9 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types';
 
 export const LoginView: React.FC = () => {
-  const { login, loginAsRole, loading } = useAuth();
+  const { login, resetPassword, loginAsRole, loading } = useAuth();
 
-  const [identifier, setIdentifier] = useState('owner@relaxiospa.com');
+  const [identifier, setIdentifier] = useState('verpankaj2025@gmail.com');
   const [password, setPassword] = useState('password123');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -24,15 +24,19 @@ export const LoginView: React.FC = () => {
     }
   };
 
-  const handleForgotSubmit = (e: React.FormEvent) => {
+  const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!forgotEmail) return;
     setForgotSent(true);
-    setTimeout(() => {
-      setForgotSent(false);
+    try {
+      await resetPassword(forgotEmail);
+      alert('Password reset link sent to ' + forgotEmail);
       setIsForgotModalOpen(false);
-      alert('Password reset instructions sent to registered phone/email!');
-    }, 2000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to send password reset email');
+    } finally {
+      setForgotSent(false);
+    }
   };
 
   return (

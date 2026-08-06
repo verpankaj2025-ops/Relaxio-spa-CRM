@@ -99,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {user.name.split(' ')[0]}
                   </p>
                   <span className="text-[10px] text-[#D4AF37] font-semibold uppercase tracking-wider block mt-0.5">
-                    {user.role.replace('_', ' ')}
+                    {isSuperAdmin ? 'SUPER ADMIN' : user.role.replace('_', ' ').toUpperCase()}
                   </span>
                 </div>
               </button>

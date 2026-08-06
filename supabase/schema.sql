@@ -24,26 +24,39 @@ INSERT INTO roles (id, role_name, permissions) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------
--- 2. USERS TABLE
+-- 2. USERS & PROFILES TABLES
 -- ---------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
-  phone VARCHAR(20) UNIQUE NOT NULL,
+  phone VARCHAR(20) UNIQUE,
   role_id VARCHAR(50) NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
   status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
   last_login TIMESTAMPTZ
 );
 
--- Seed Initial Super Admin, Admin, Staff
-INSERT INTO users (id, name, email, phone, role_id, status, password_hash) VALUES
-('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Rajesh Sharma (Owner)', 'owner@relaxiospa.com', '9876543210', 'super_admin', 'active', '$2a$12$eImiTXuWVxfM37uY4JANjOQ/D/.q1aN4kM6gBqO.M1dE.a2e3u5d2'),
-('b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'Priya Verma (Manager)', 'admin@relaxiospa.com', '9812345678', 'admin', 'active', '$2a$12$eImiTXuWVxfM37uY4JANjOQ/D/.q1aN4kM6gBqO.M1dE.a2e3u5d2'),
-('c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33', 'Anish Kumar (Reception)', 'desk@relaxiospa.com', '9898989898', 'staff', 'active', '$2a$12$eImiTXuWVxfM37uY4JANjOQ/D/.q1aN4kM6gBqO.M1dE.a2e3u5d2')
-ON CONFLICT (email) DO NOTHING;
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  full_name VARCHAR(255) NOT NULL,
+  role VARCHAR(50) NOT NULL DEFAULT 'staff',
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Seed Initial Super Admin verpankaj2025@gmail.com
+INSERT INTO users (id, name, email, phone, role_id, status) VALUES
+('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Super Admin (Pankaj)', 'verpankaj2025@gmail.com', '9876543210', 'super_admin', 'active')
+ON CONFLICT (email) DO UPDATE SET role_id = 'super_admin', status = 'active';
+
+INSERT INTO profiles (id, email, full_name, role, is_active) VALUES
+('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'verpankaj2025@gmail.com', 'Super Admin', 'super_admin', true)
+ON CONFLICT (email) DO UPDATE SET role = 'super_admin', is_active = true;
 
 -- ---------------------------------------------------------
 -- 3. THERAPISTS TABLE
@@ -285,6 +298,7 @@ USING (bucket_id = 'customer-photos');
 -- ---------------------------------------------------------
 ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE therapists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
@@ -299,6 +313,7 @@ ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow read access to all" ON roles FOR SELECT USING (true);
 CREATE POLICY "Allow read access to all" ON users FOR SELECT USING (true);
 CREATE POLICY "Allow write access to users" ON users FOR ALL USING (true);
+CREATE POLICY "Allow all operations on profiles" ON profiles FOR ALL USING (true);
 
 CREATE POLICY "Allow all operations on customers" ON customers FOR ALL USING (true);
 CREATE POLICY "Allow all operations on therapists" ON therapists FOR ALL USING (true);

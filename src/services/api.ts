@@ -107,13 +107,14 @@ function customerToSupabaseRow(c: Partial<Customer>, createdBy?: User) {
 }
 
 function mapSupabaseUser(row: any): User {
+  const isSuperAdminEmail = row.email?.toLowerCase().trim() === 'verpankaj2025@gmail.com';
   return {
     id: row.id,
-    name: row.name,
+    name: row.name || row.full_name || (isSuperAdminEmail ? 'Super Admin' : 'Staff User'),
     email: row.email,
-    phone: row.phone,
-    role: row.role_id || 'staff',
-    status: row.status || 'active',
+    phone: row.phone || '',
+    role: isSuperAdminEmail ? 'super_admin' : (row.role_id || row.role || 'staff'),
+    status: row.status || (row.is_active === false ? 'suspended' : 'active'),
     createdAt: row.created_at || new Date().toISOString(),
     lastLogin: row.last_login || undefined,
   };
@@ -524,12 +525,69 @@ export const apiService = {
     return customers.filter(c => c.mobile.trim() === mobile.trim());
   },
 
+  // Ensure Super Admin Profile exists in Supabase profiles & users table
+  async ensureSuperAdminProfile(authUser?: any): Promise<User> {
+    const superAdminEmail = 'verpankaj2025@gmail.com';
+    const userId = authUser?.id || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
+    if (isSupabaseConfigured) {
+      try {
+        // Upsert into profiles table
+        await supabase.from('profiles').upsert([
+          {
+            id: userId,
+            email: superAdminEmail,
+            full_name: 'Super Admin',
+            role: 'super_admin',
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          },
+        ], { onConflict: 'email' });
+
+        // Upsert into users table
+        await supabase.from('users').upsert([
+          {
+            id: userId,
+            name: 'Super Admin (Pankaj)',
+            email: superAdminEmail,
+            phone: '9876543210',
+            role_id: 'super_admin',
+            status: 'active',
+            updated_at: new Date().toISOString(),
+          },
+        ], { onConflict: 'email' });
+      } catch (err) {
+        console.error('Error auto-syncing Super Admin profile:', err);
+      }
+    }
+
+    const superAdminUser: User = {
+      id: userId,
+      name: 'Super Admin (Pankaj)',
+      email: superAdminEmail,
+      phone: '9876543210',
+      role: 'super_admin',
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+    };
+
+    return superAdminUser;
+  },
+
   // Users Management
   async getUsers(): Promise<User[]> {
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: false });
-        if (!error && data) return data.map(mapSupabaseUser);
+        if (!error && data && data.length > 0) {
+          const list = data.map(mapSupabaseUser);
+          if (!list.some(u => u.email === 'verpankaj2025@gmail.com')) {
+            const superAdmin = await this.ensureSuperAdminProfile();
+            list.unshift(superAdmin);
+          }
+          return list;
+        }
       } catch (err) {
         console.error('Supabase getUsers error:', err);
       }
@@ -540,10 +598,26 @@ export const apiService = {
       if (res.ok) return await res.json();
     } catch {}
 
-    return getStorage(STORAGE_KEYS.USERS, initialUsers);
+    const list: User[] = getStorage(STORAGE_KEYS.USERS, initialUsers);
+    if (!list.some(u => u.email === 'verpankaj2025@gmail.com')) {
+      list.unshift({
+        id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        name: 'Super Admin (Pankaj)',
+        email: 'verpankaj2025@gmail.com',
+        phone: '9876543210',
+        role: 'super_admin',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      });
+    }
+    return list;
   },
 
   async createUser(userData: Partial<User>, requester: User): Promise<User> {
+    if (requester.role !== 'super_admin' && userData.role === 'admin') {
+      throw new Error('Only Super Admin can manage or create Admin accounts.');
+    }
+
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
@@ -554,13 +628,20 @@ export const apiService = {
             phone: userData.phone,
             role_id: userData.role || 'staff',
             status: 'active',
-            password_hash: '$2a$12$eImiTXuWVxfM37uY4JANjOQ/D/.q1aN4kM6gBqO.M1dE.a2e3u5d2', // password123
           }])
           .select()
           .single();
 
         if (!error && data) {
           const newUser = mapSupabaseUser(data);
+          // Also sync to profiles table
+          await supabase.from('profiles').insert([{
+            id: data.id,
+            email: data.email,
+            full_name: data.name,
+            role: data.role_id,
+            is_active: true,
+          }]);
           await logSupabaseAudit(requester.id, requester.name, requester.role, 'CREATE_USER', 'user', newUser.id, `Created ${newUser.role} account for ${newUser.name}`);
           return newUser;
         }
@@ -589,11 +670,23 @@ export const apiService = {
   },
 
   async toggleUserStatus(id: string, status: 'active' | 'suspended', requester: User): Promise<User> {
+    const usersList = await this.getUsers();
+    const target = usersList.find(u => u.id === id);
+
+    if (target?.email === 'verpankaj2025@gmail.com' || target?.role === 'super_admin') {
+      throw new Error('The Super Admin account is permanent and cannot be modified or suspended.');
+    }
+
+    if (requester.role !== 'super_admin' && target?.role === 'admin') {
+      throw new Error('Only Super Admin can modify Admin accounts.');
+    }
+
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.from('users').update({ status }).eq('id', id).select().single();
         if (!error && data) {
           const updated = mapSupabaseUser(data);
+          await supabase.from('profiles').update({ is_active: status === 'active' }).eq('id', id);
           await logSupabaseAudit(requester.id, requester.name, requester.role, 'UPDATE_USER', 'user', id, `Updated account status to ${status}`);
           return updated;
         }
@@ -613,9 +706,21 @@ export const apiService = {
   },
 
   async deleteUser(id: string, requester: User): Promise<void> {
+    const usersList = await this.getUsers();
+    const target = usersList.find(u => u.id === id);
+
+    if (target?.email === 'verpankaj2025@gmail.com' || target?.role === 'super_admin') {
+      throw new Error('The Super Admin account is protected and cannot be deleted.');
+    }
+
+    if (requester.role !== 'super_admin' && target?.role === 'admin') {
+      throw new Error('Only Super Admin can remove Admin accounts.');
+    }
+
     if (isSupabaseConfigured) {
       try {
         await supabase.from('users').delete().eq('id', id);
+        await supabase.from('profiles').delete().eq('id', id);
         await logSupabaseAudit(requester.id, requester.name, requester.role, 'DELETE_USER', 'user', id, `Deleted user account ID ${id}`);
         return;
       } catch (err) {
