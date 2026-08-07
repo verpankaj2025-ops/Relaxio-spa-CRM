@@ -340,7 +340,7 @@ export const apiService = {
       });
 
       if (authErr) {
-        console.error('[SUPER ADMIN INIT AUTH ERROR]', authErr.message || authErr);
+        console.warn('[SUPER ADMIN INIT AUTH INFO]', authErr.message || authErr);
         if (authErr.message?.toLowerCase().includes('rate limit')) {
           throw new Error('Supabase email rate limit exceeded. If the account was already created, please sign in directly on the login screen.');
         }
@@ -392,6 +392,16 @@ export const apiService = {
 
       // Sign out immediately so user is NOT auto-logged in
       await supabase.auth.signOut();
+
+      const requiresEmailConfirmation = !authData.session;
+      const successMsg = requiresEmailConfirmation
+        ? 'Super Admin created successfully. Please verify your email before signing in.'
+        : 'Super Admin created successfully. Please sign in.';
+
+      return {
+        success: true,
+        message: successMsg,
+      };
     } else {
       // Local fallback
       const users: User[] = getStorage(STORAGE_KEYS.USERS, []);
@@ -406,12 +416,12 @@ export const apiService = {
       };
       users.unshift(newSuperAdmin);
       setStorage(STORAGE_KEYS.USERS, users);
-    }
 
-    return {
-      success: true,
-      message: 'Super Admin account initialized successfully. Please sign in with your credentials.',
-    };
+      return {
+        success: true,
+        message: 'Super Admin created successfully. Please sign in.',
+      };
+    }
   },
 
   // Auth Login (Strict Authentication Only)
@@ -421,6 +431,8 @@ export const apiService = {
       let authErr: any = null;
 
       const identifierClean = identifier.trim();
+
+      console.log('[LOGIN EMAIL]', identifierClean);
 
       // Step 1: FIRST authenticate using Supabase Auth signInWithPassword
       if (identifierClean.includes('@')) {
@@ -440,16 +452,16 @@ export const apiService = {
       }
 
       if (authErr) {
-        console.error('[AUTH ERROR]', authErr.message || authErr);
+        console.log('[AUTH ERROR]', authErr.message);
         throw new Error(authErr.message || 'Invalid login credentials');
       }
 
       if (!authUser) {
-        console.error('[AUTH ERROR] No user object returned from Supabase Auth');
+        console.warn('[AUTH INFO] No user object returned from Supabase Auth');
         throw new Error('User not found');
       }
 
-      console.log('[AUTH SUCCESS]', { id: authUser.id, email: authUser.email });
+      console.log('[AUTH RESPONSE]', authUser.id);
 
       // Step 2: AFTER successful authentication, fetch or ensure profile
       let fetchedUser: User | null = null;
