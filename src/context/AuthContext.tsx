@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { User, UserRole } from '../types';
 import { apiService } from '../services/api';
 import { initialUsers } from '../data/mockInitialData';
@@ -26,7 +26,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [lastActivity, setLastActivity] = useState<number>(Date.now());
+  const lastActivityRef = useRef<number>(Date.now());
   const [inactivityWarning, setInactivityWarning] = useState<boolean>(false);
 
   // Sync session with Supabase Auth or local storage
@@ -134,6 +134,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           if (session?.user) await syncUserFromAuth(session.user);
+          lastActivityRef.current = Date.now();
+          setInactivityWarning(false);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
         }
@@ -149,9 +151,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Activity tracking for auto-logout
   const resetInactivityTimer = useCallback(() => {
-    setLastActivity(Date.now());
-    if (inactivityWarning) setInactivityWarning(false);
-  }, [inactivityWarning]);
+    lastActivityRef.current = Date.now();
+    setInactivityWarning(false);
+  }, []);
 
   useEffect(() => {
     const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
@@ -169,10 +171,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const checkInterval = setInterval(() => {
       const now = Date.now();
-      const inactiveMs = now - lastActivity;
+      const inactiveMs = now - lastActivityRef.current;
       const timeoutMs = 5 * 60 * 1000; // 5 minutes
+      const warningMs = 4 * 60 * 1000 + 30 * 1000; // 4 minutes 30 seconds
 
-      if (inactiveMs >= timeoutMs - 30000 && !inactivityWarning) {
+      if (inactiveMs >= warningMs) {
         setInactivityWarning(true);
       }
 
@@ -182,7 +185,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, 10000);
 
     return () => clearInterval(checkInterval);
-  }, [user, lastActivity, inactivityWarning]);
+  }, [user]);
 
   const login = async (identifier: string, password: string) => {
     setLoading(true);
@@ -191,7 +194,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const { user: loggedInUser } = await apiService.login(cleanId, password);
       setUser(loggedInUser);
-      setLastActivity(Date.now());
+      lastActivityRef.current = Date.now();
       setInactivityWarning(false);
     } catch (err: any) {
       throw new Error(err.message || 'Invalid login credentials');
@@ -253,7 +256,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         canExport,
         canManageUsers,
         canDeleteCustomer,
-        lastActivity,
+        lastActivity: lastActivityRef.current,
         inactivityWarning,
       }}
     >
