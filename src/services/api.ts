@@ -1,8 +1,20 @@
 import { User, Customer, Therapist, Room, Agent, Service, AuditLog, SpaSettings } from '../types';
-import { initialUsers, initialCustomers, initialTherapists, initialRooms, initialAgents, initialServices, initialAuditLogs, initialSettings } from '../data/mockInitialData';
 import { supabase, isSupabaseConfigured, isDevMode, uploadCustomerPhoto } from '../supabaseClient';
 
 const API_BASE = '/api';
+
+const defaultSettings: SpaSettings = {
+  spaName: 'Relaxio Spa & Wellness',
+  tagline: 'Luxury Rejuvenation & Holistic Care',
+  phone: '',
+  email: '',
+  address: '',
+  gstNumber: '',
+  currencySymbol: '₹',
+  inactivityTimeoutMins: 5,
+  autoBackupEnabled: true,
+  theme: 'dark',
+};
 
 // LocalStorage Keys Fallback
 const STORAGE_KEYS = {
@@ -45,14 +57,25 @@ export function initLocalStorageFallback() {
   if (!isSupabaseConfigured && !isDevMode) {
     return;
   }
-  if (!getStorage(STORAGE_KEYS.USERS, null)) setStorage(STORAGE_KEYS.USERS, initialUsers);
-  if (!getStorage(STORAGE_KEYS.CUSTOMERS, null)) setStorage(STORAGE_KEYS.CUSTOMERS, initialCustomers);
-  if (!getStorage(STORAGE_KEYS.THERAPISTS, null)) setStorage(STORAGE_KEYS.THERAPISTS, initialTherapists);
-  if (!getStorage(STORAGE_KEYS.ROOMS, null)) setStorage(STORAGE_KEYS.ROOMS, initialRooms);
-  if (!getStorage(STORAGE_KEYS.AGENTS, null)) setStorage(STORAGE_KEYS.AGENTS, initialAgents);
-  if (!getStorage(STORAGE_KEYS.SERVICES, null)) setStorage(STORAGE_KEYS.SERVICES, initialServices);
-  if (!getStorage(STORAGE_KEYS.AUDIT_LOGS, null)) setStorage(STORAGE_KEYS.AUDIT_LOGS, initialAuditLogs);
-  if (!getStorage(STORAGE_KEYS.SETTINGS, null)) setStorage(STORAGE_KEYS.SETTINGS, initialSettings);
+  const defaultUsers: User[] = [
+    {
+      id: 'b903dfd9-2199-4494-93e9-74a86fae2488',
+      name: 'Pankaj Verma',
+      email: 'verpankaj2025@gmail.com',
+      phone: '',
+      role: 'super_admin',
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    }
+  ];
+  if (!getStorage(STORAGE_KEYS.USERS, null)) setStorage(STORAGE_KEYS.USERS, defaultUsers);
+  if (!getStorage(STORAGE_KEYS.CUSTOMERS, null)) setStorage(STORAGE_KEYS.CUSTOMERS, []);
+  if (!getStorage(STORAGE_KEYS.THERAPISTS, null)) setStorage(STORAGE_KEYS.THERAPISTS, []);
+  if (!getStorage(STORAGE_KEYS.ROOMS, null)) setStorage(STORAGE_KEYS.ROOMS, []);
+  if (!getStorage(STORAGE_KEYS.AGENTS, null)) setStorage(STORAGE_KEYS.AGENTS, []);
+  if (!getStorage(STORAGE_KEYS.SERVICES, null)) setStorage(STORAGE_KEYS.SERVICES, []);
+  if (!getStorage(STORAGE_KEYS.AUDIT_LOGS, null)) setStorage(STORAGE_KEYS.AUDIT_LOGS, []);
+  if (!getStorage(STORAGE_KEYS.SETTINGS, null)) setStorage(STORAGE_KEYS.SETTINGS, defaultSettings);
 }
 
 initLocalStorageFallback();
@@ -245,6 +268,35 @@ export const apiService = {
       const profile = (profileData && profileData[0]) || (userData && userData[0]);
 
       if (!profile) {
+        // Probe Supabase Auth directly for Super Admin email
+        try {
+          const { error } = await supabase.auth.signInWithOtp({
+            email: 'verpankaj2025@gmail.com',
+            options: { shouldCreateUser: false },
+          });
+
+          if (!error || error.message?.toLowerCase().includes('rate limit') || error.status === 429) {
+            return {
+              profileExists: true,
+              authUserExists: true,
+              status: 'READY',
+              email: 'verpankaj2025@gmail.com',
+            };
+          }
+        } catch {}
+
+        // Fallback to checking storage
+        const users: User[] = getStorage(STORAGE_KEYS.USERS, []);
+        const hasSuper = users.some(u => u.role === 'super_admin' || u.email?.toLowerCase().trim() === 'verpankaj2025@gmail.com');
+        if (hasSuper) {
+          return {
+            profileExists: true,
+            authUserExists: true,
+            status: 'READY',
+            email: 'verpankaj2025@gmail.com',
+          };
+        }
+
         return {
           profileExists: false,
           authUserExists: false,
@@ -513,7 +565,7 @@ export const apiService = {
     }
 
     // Local Fallback if Supabase is not configured
-    const users: User[] = getStorage(STORAGE_KEYS.USERS, initialUsers);
+    const users: User[] = getStorage(STORAGE_KEYS.USERS, []);
     const user = users.find(u => u.email.toLowerCase() === identifier.toLowerCase() || u.phone === identifier);
     if (!user) throw new Error('User not found');
     if (user.status === 'suspended') throw new Error('Account suspended');
@@ -529,6 +581,7 @@ export const apiService = {
         const { data, error } = await supabase
           .from('customers')
           .select('*')
+          .neq('status', 'Deleted')
           .order('created_at', { ascending: false });
 
         if (!error && data) {
@@ -536,8 +589,11 @@ export const apiService = {
           setStorage(STORAGE_KEYS.CUSTOMERS, mapped);
           return mapped;
         }
+        if (error) {
+          console.warn('Supabase getCustomers info:', error.message);
+        }
       } catch (err) {
-        console.error('Supabase fetch error:', err);
+        console.warn('Supabase getCustomers warn:', err);
       }
     }
 
@@ -550,11 +606,15 @@ export const apiService = {
       }
     } catch {}
 
-    return getStorage(STORAGE_KEYS.CUSTOMERS, initialCustomers);
+    return getStorage(STORAGE_KEYS.CUSTOMERS, []);
   },
 
   // Add Customer
   async addCustomer(customerData: Partial<Customer>, createdBy: User): Promise<Customer> {
+    if (!createdBy || createdBy.status === 'suspended') {
+      throw new Error('Access denied: User account is suspended or invalid.');
+    }
+
     if (isSupabaseConfigured) {
       try {
         const row = customerToSupabaseRow(customerData, createdBy);
@@ -566,21 +626,25 @@ export const apiService = {
 
         if (!error && data) {
           const newCust = mapSupabaseCustomer(data);
-          await logSupabaseAudit(
-            createdBy.id,
-            createdBy.name,
-            createdBy.role,
-            'CREATE_CUSTOMER',
-            'customer',
-            newCust.id,
-            `Created invoice ${newCust.invoiceNumber} for ${newCust.name} (${newCust.mobile})`
-          );
+          try {
+            await logSupabaseAudit(
+              createdBy.id,
+              createdBy.name,
+              createdBy.role,
+              'CREATE_CUSTOMER',
+              'customer',
+              newCust.id,
+              `Created invoice ${newCust.invoiceNumber} for ${newCust.name} (${newCust.mobile})`
+            );
+          } catch (auditErr: any) {
+            await supabase.from('customers').delete().eq('id', newCust.id);
+            throw new Error(`Audit log entry failed. Customer creation rolled back: ${auditErr?.message || 'Unknown error'}`);
+          }
           return newCust;
-        } else if (error) {
-          console.error('Supabase customer insert error:', error.message);
         }
-      } catch (err) {
-        console.error('Supabase add customer exception:', err);
+      } catch (err: any) {
+        if (err.message?.includes('Audit log entry failed')) throw err;
+        console.warn('Supabase addCustomer info:', err.message || err);
       }
     }
 
@@ -609,7 +673,7 @@ export const apiService = {
     const count = getStorage<Customer[]>(STORAGE_KEYS.CUSTOMERS, []).length + 1007;
     const newCust: Customer = {
       id: `cust-${Date.now()}`,
-      invoiceNumber: customerData.invoiceNumber || `RLX-2026-${count}`,
+      invoiceNumber: customerData.invoiceNumber || `RLX-2026-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 1000)}`,
       name: customerData.name || 'Guest',
       mobile: customerData.mobile || '',
       gender: customerData.gender || 'Male',
@@ -642,6 +706,10 @@ export const apiService = {
 
   // Update Customer
   async updateCustomer(id: string, customerData: Partial<Customer>, updatedBy: User): Promise<Customer> {
+    if (!updatedBy || updatedBy.status === 'suspended') {
+      throw new Error('Access denied: User account is suspended or invalid.');
+    }
+
     if (isSupabaseConfigured) {
       try {
         const rowUpdates: any = {};
@@ -687,8 +755,8 @@ export const apiService = {
           );
           return updated;
         }
-      } catch (err) {
-        console.error('Supabase update customer exception:', err);
+      } catch (err: any) {
+        console.warn('Supabase updateCustomer info:', err.message || err);
       }
     }
 
@@ -720,25 +788,33 @@ export const apiService = {
     throw new Error('Customer record not found');
   },
 
-  // Delete Customer
+  // Soft Delete Customer
   async deleteCustomer(id: string, user: User): Promise<void> {
+    if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) {
+      throw new Error('Access denied: Only Administrators can soft-delete customer records.');
+    }
+
     if (isSupabaseConfigured) {
       try {
-        const { error } = await supabase.from('customers').delete().eq('id', id);
+        const { error } = await supabase
+          .from('customers')
+          .update({ status: 'Deleted', updated_at: new Date().toISOString() })
+          .eq('id', id);
+
         if (!error) {
           await logSupabaseAudit(
             user.id,
             user.name,
             user.role,
-            'DELETE_CUSTOMER',
+            'SOFT_DELETE_CUSTOMER',
             'customer',
             id,
-            `Deleted customer record ID ${id}`
+            `Soft-deleted customer record ID ${id}`
           );
           return;
         }
-      } catch (err) {
-        console.error('Supabase delete customer error:', err);
+      } catch (err: any) {
+        console.warn('Supabase deleteCustomer info:', err.message || err);
       }
     }
 
@@ -761,18 +837,19 @@ export const apiService = {
           .from('customers')
           .select('*')
           .eq('mobile', mobile.trim())
+          .neq('status', 'Deleted')
           .order('created_at', { ascending: false });
 
         if (!error && data) {
           return data.map(mapSupabaseCustomer);
         }
-      } catch (err) {
-        console.error('Supabase search mobile error:', err);
+      } catch (err: any) {
+        console.warn('Supabase searchByMobile info:', err.message || err);
       }
     }
 
-    const customers: Customer[] = getStorage(STORAGE_KEYS.CUSTOMERS, initialCustomers);
-    return customers.filter(c => c.mobile.trim() === mobile.trim());
+    const customers: Customer[] = getStorage(STORAGE_KEYS.CUSTOMERS, []);
+    return customers.filter(c => c.mobile.trim() === mobile.trim() && c.status !== 'Deleted');
   },
 
   // Ensure Super Admin Profile exists in Supabase profiles & users table
@@ -831,8 +908,11 @@ export const apiService = {
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: false });
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           return data.map(mapSupabaseUser);
+        }
+        if (error) {
+          console.error('Supabase getUsers error:', error.message);
         }
       } catch (err) {
         console.error('Supabase getUsers error:', err);
@@ -844,56 +924,111 @@ export const apiService = {
       if (res.ok) return await res.json();
     } catch {}
 
-    return getStorage(STORAGE_KEYS.USERS, initialUsers);
+    return getStorage(STORAGE_KEYS.USERS, []);
   },
 
-  async createUser(userData: Partial<User>, requester: User): Promise<User> {
+  async createUser(userData: Partial<User> & { password?: string }, requester: User): Promise<User> {
     if (requester.role !== 'super_admin' && userData.role === 'admin') {
       throw new Error('Only Super Admin can manage or create Admin accounts.');
     }
+    if (requester.role === 'staff') {
+      throw new Error('Staff accounts do not have permission to create users.');
+    }
+
+    const cleanEmail = (userData.email || '').toLowerCase().trim();
+    const password = userData.password || 'Relaxio@123';
 
     if (isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase
+        const { data: sessionData } = await supabase.auth.getSession();
+        const currentSession = sessionData?.session;
+
+        // 1. Create in Supabase Auth
+        const { data: authData, error: authErr } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: password,
+          options: {
+            data: {
+              full_name: userData.name,
+              phone: userData.phone || '',
+              role: userData.role || 'staff',
+            },
+          },
+        });
+
+        if (authErr) {
+          console.warn('Supabase Auth signUp notice:', authErr.message);
+        }
+
+        // Restore current session if signUp changed active session
+        if (currentSession && authData?.session) {
+          await supabase.auth.setSession({
+            access_token: currentSession.access_token,
+            refresh_token: currentSession.refresh_token,
+          });
+        }
+
+        const authUserId = authData?.user?.id || crypto.randomUUID();
+
+        // 2. Insert into users table
+        const { data: userRow, error: userErr } = await supabase
           .from('users')
-          .insert([{
-            name: userData.name,
-            email: userData.email,
-            phone: userData.phone,
-            role_id: userData.role || 'staff',
-            status: 'active',
-          }])
+          .upsert([
+            {
+              id: authUserId,
+              name: userData.name,
+              email: cleanEmail,
+              phone: userData.phone || '',
+              role_id: userData.role || 'staff',
+              status: 'active',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          ], { onConflict: 'id' })
           .select()
           .single();
 
-        if (!error && data) {
-          const newUser = mapSupabaseUser(data);
-          // Also sync to profiles table
-          await supabase.from('profiles').insert([{
-            id: data.id,
-            email: data.email,
-            full_name: data.name,
-            role: data.role_id,
-            is_active: true,
-          }]);
-          await logSupabaseAudit(requester.id, requester.name, requester.role, 'CREATE_USER', 'user', newUser.id, `Created ${newUser.role} account for ${newUser.name}`);
-          return newUser;
+        if (userErr) {
+          console.error('Supabase users insert error:', userErr);
+          throw new Error(`Failed to create user: ${userErr.message}`);
         }
-      } catch (err) {
+
+        // 3. Sync to profiles table
+        try {
+          await supabase.from('profiles').upsert([
+            {
+              id: authUserId,
+              email: cleanEmail,
+              full_name: userData.name,
+              role: userData.role || 'staff',
+              is_active: true,
+              updated_at: new Date().toISOString(),
+            },
+          ], { onConflict: 'id' });
+        } catch (pErr) {
+          console.warn('Profiles upsert warning:', pErr);
+        }
+
+        await logSupabaseAudit(requester.id, requester.name, requester.role, 'CREATE_USER', 'user', authUserId, `Provisioned ${userData.role || 'staff'} account for ${userData.name}`);
+
+        return mapSupabaseUser(userRow);
+      } catch (err: any) {
         console.error('Supabase createUser error:', err);
+        throw new Error(err.message || 'Failed to provision user in Supabase');
       }
     }
 
     const newUser: User = {
       id: `usr-${Date.now()}`,
       name: userData.name || 'Staff User',
-      email: userData.email || '',
+      email: cleanEmail,
       phone: userData.phone || '',
       role: userData.role || 'staff',
       status: 'active',
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
-    const users: User[] = getStorage(STORAGE_KEYS.USERS, initialUsers);
+    const users: User[] = getStorage(STORAGE_KEYS.USERS, []);
     users.push(newUser);
     setStorage(STORAGE_KEYS.USERS, users);
     return newUser;
@@ -917,26 +1052,45 @@ export const apiService = {
 
     if (isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase.from('users').update({ status }).eq('id', id).select().single();
-        if (!error && data) {
-          const updated = mapSupabaseUser(data);
-          await supabase.from('profiles').update({ is_active: status === 'active' }).eq('id', id);
-          await logSupabaseAudit(requester.id, requester.name, requester.role, 'UPDATE_USER', 'user', id, `Updated account status to ${status}`);
-          return updated;
-        }
-      } catch (err) {
+        const { data, error } = await supabase
+          .from('users')
+          .update({ status, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) throw new Error(error.message);
+
+        const updated = mapSupabaseUser(data);
+        await supabase.from('profiles').update({ is_active: status === 'active', updated_at: new Date().toISOString() }).eq('id', id);
+        await logSupabaseAudit(requester.id, requester.name, requester.role, 'UPDATE_USER', 'user', id, `Updated account status to ${status}`);
+        return updated;
+      } catch (err: any) {
         console.error('Supabase toggleUserStatus error:', err);
+        throw new Error(err.message || 'Failed to update user status in Supabase');
       }
     }
 
-    const users: User[] = getStorage(STORAGE_KEYS.USERS, initialUsers);
+    const users: User[] = getStorage(STORAGE_KEYS.USERS, []);
     const user = users.find(u => u.id === id);
     if (user) {
       user.status = status;
+      user.updatedAt = new Date().toISOString();
       setStorage(STORAGE_KEYS.USERS, users);
       return user;
     }
     throw new Error('User not found');
+  },
+
+  async sendPasswordResetEmail(email: string): Promise<{ success: boolean; message: string }> {
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: window.location.origin,
+      });
+      if (error) throw new Error(error.message);
+      return { success: true, message: `Password reset email dispatched to ${email}` };
+    }
+    return { success: true, message: `Password reset instructions sent to ${email}` };
   },
 
   async deleteUser(id: string, requester: User): Promise<void> {
@@ -953,16 +1107,20 @@ export const apiService = {
 
     if (isSupabaseConfigured) {
       try {
-        await supabase.from('users').delete().eq('id', id);
-        await supabase.from('profiles').delete().eq('id', id);
+        const { error: err1 } = await supabase.from('users').delete().eq('id', id);
+        if (err1) console.error('Supabase users delete error:', err1);
+        const { error: err2 } = await supabase.from('profiles').delete().eq('id', id);
+        if (err2) console.error('Supabase profiles delete error:', err2);
+
         await logSupabaseAudit(requester.id, requester.name, requester.role, 'DELETE_USER', 'user', id, `Deleted user account ID ${id}`);
         return;
-      } catch (err) {
+      } catch (err: any) {
         console.error('Supabase deleteUser error:', err);
+        throw new Error(err.message || 'Failed to delete user in Supabase');
       }
     }
 
-    const users: User[] = getStorage(STORAGE_KEYS.USERS, initialUsers);
+    const users: User[] = getStorage(STORAGE_KEYS.USERS, []);
     const filtered = users.filter(u => u.id !== id);
     setStorage(STORAGE_KEYS.USERS, filtered);
   },
@@ -983,7 +1141,7 @@ export const apiService = {
       if (res.ok) return await res.json();
     } catch {}
 
-    return getStorage(STORAGE_KEYS.THERAPISTS, initialTherapists);
+    return getStorage(STORAGE_KEYS.THERAPISTS, []);
   },
 
   async saveTherapist(t: Partial<Therapist>): Promise<Therapist> {
@@ -1005,7 +1163,7 @@ export const apiService = {
       }
     }
 
-    const list: Therapist[] = getStorage(STORAGE_KEYS.THERAPISTS, initialTherapists);
+    const list: Therapist[] = getStorage(STORAGE_KEYS.THERAPISTS, []);
     const newT: Therapist = { id: `th-${Date.now()}`, name: t.name || 'Therapist', phone: t.phone || '', specialization: t.specialization || 'General', status: 'active', totalSessions: 0, totalRevenue: 0, rating: 5.0 };
     list.push(newT);
     setStorage(STORAGE_KEYS.THERAPISTS, list);
@@ -1028,7 +1186,7 @@ export const apiService = {
       if (res.ok) return await res.json();
     } catch {}
 
-    return getStorage(STORAGE_KEYS.ROOMS, initialRooms);
+    return getStorage(STORAGE_KEYS.ROOMS, []);
   },
 
   async saveRoom(r: Partial<Room>): Promise<Room> {
@@ -1049,7 +1207,7 @@ export const apiService = {
       }
     }
 
-    const list: Room[] = getStorage(STORAGE_KEYS.ROOMS, initialRooms);
+    const list: Room[] = getStorage(STORAGE_KEYS.ROOMS, []);
     const newR: Room = { id: `rm-${Date.now()}`, roomNumber: r.roomNumber || 'Room 107', type: r.type || 'Standard', status: 'available' };
     list.push(newR);
     setStorage(STORAGE_KEYS.ROOMS, list);
@@ -1072,7 +1230,7 @@ export const apiService = {
       if (res.ok) return await res.json();
     } catch {}
 
-    return getStorage(STORAGE_KEYS.AGENTS, initialAgents);
+    return getStorage(STORAGE_KEYS.AGENTS, []);
   },
 
   async saveAgent(a: Partial<Agent>): Promise<Agent> {
@@ -1094,7 +1252,7 @@ export const apiService = {
       }
     }
 
-    const list: Agent[] = getStorage(STORAGE_KEYS.AGENTS, initialAgents);
+    const list: Agent[] = getStorage(STORAGE_KEYS.AGENTS, []);
     const newA: Agent = { id: `ag-${Date.now()}`, name: a.name || 'Agent', phone: a.phone || '', commissionPct: a.commissionPct || 10, totalReferrals: 0, totalRevenueGenerated: 0, status: 'active' };
     list.push(newA);
     setStorage(STORAGE_KEYS.AGENTS, list);
@@ -1117,7 +1275,7 @@ export const apiService = {
       if (res.ok) return await res.json();
     } catch {}
 
-    return getStorage(STORAGE_KEYS.SERVICES, initialServices);
+    return getStorage(STORAGE_KEYS.SERVICES, []);
   },
 
   async saveService(s: Partial<Service>): Promise<Service> {
@@ -1139,7 +1297,7 @@ export const apiService = {
       }
     }
 
-    const list: Service[] = getStorage(STORAGE_KEYS.SERVICES, initialServices);
+    const list: Service[] = getStorage(STORAGE_KEYS.SERVICES, []);
     const newS: Service = { id: `srv-${Date.now()}`, name: s.name || 'Service', category: s.category || 'Therapy', price: Number(s.price) || 1000, durationMins: Number(s.durationMins) || 60 };
     list.push(newS);
     setStorage(STORAGE_KEYS.SERVICES, list);
@@ -1162,7 +1320,7 @@ export const apiService = {
       if (res.ok) return await res.json();
     } catch {}
 
-    return getStorage(STORAGE_KEYS.AUDIT_LOGS, initialAuditLogs);
+    return getStorage(STORAGE_KEYS.AUDIT_LOGS, []);
   },
 
   // Settings
@@ -1181,7 +1339,7 @@ export const apiService = {
       if (res.ok) return await res.json();
     } catch {}
 
-    return getStorage(STORAGE_KEYS.SETTINGS, initialSettings);
+    return getStorage(STORAGE_KEYS.SETTINGS, defaultSettings);
   },
 
   async saveSettings(settings: SpaSettings, user: User): Promise<SpaSettings> {

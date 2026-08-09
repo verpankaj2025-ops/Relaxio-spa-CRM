@@ -24,6 +24,7 @@ interface SpaDataContextType {
   settings: SpaSettings;
   stats: DashboardStats;
   loading: boolean;
+  error: string | null;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   refreshData: () => Promise<void>;
@@ -63,9 +64,11 @@ export const SpaDataProvider: React.FC<{ children: ReactNode }> = ({ children })
   });
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refreshData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [c, t, r, a, s, l, set] = await Promise.all([
         apiService.getCustomers(),
@@ -86,6 +89,8 @@ export const SpaDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         setSettings(set);
         if (set.theme) setTheme(set.theme);
       }
+    } catch (err: any) {
+      setError(err?.message || 'Error communicating with Supabase database.');
     } finally {
       setLoading(false);
     }
@@ -96,7 +101,7 @@ export const SpaDataProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     if (isSupabaseConfigured) {
       const channel = supabase
-        .channel('schema-db-changes')
+        .channel('schema-db-changes-customer')
         .on('postgres_changes', { event: '*', schema: 'public' }, () => {
           refreshData();
         })
@@ -135,7 +140,7 @@ export const SpaDataProvider: React.FC<{ children: ReactNode }> = ({ children })
       return { found: false, customerName: '', totalVisits: 0, totalSpend: 0, lastVisitDate: '', previousTherapist: '', previousServices: [] };
     }
 
-    const matches = customers.filter(c => c.mobile.trim() === clean);
+    const matches = customers.filter(c => c.mobile.trim() === clean && c.status !== 'Deleted');
     if (matches.length === 0) {
       return { found: false, customerName: '', totalVisits: 0, totalSpend: 0, lastVisitDate: '', previousTherapist: '', previousServices: [] };
     }
@@ -337,6 +342,7 @@ export const SpaDataProvider: React.FC<{ children: ReactNode }> = ({ children })
         settings,
         stats,
         loading,
+        error,
         theme,
         toggleTheme,
         refreshData,

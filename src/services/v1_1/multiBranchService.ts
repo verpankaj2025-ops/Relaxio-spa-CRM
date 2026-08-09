@@ -8,11 +8,11 @@ export class MultiBranchService {
         {
           id: 'branch_default',
           code: 'MAIN-01',
-          name: 'Relaxio Main Flagship Spa',
-          city: 'Mumbai',
-          address: 'Main Spa Center, Floor 2',
-          phone: '+919876543210',
-          managerUserId: 'usr_admin',
+          name: 'Main Center',
+          city: '',
+          address: '',
+          phone: '',
+          managerUserId: '',
           isActive: true,
         },
       ];

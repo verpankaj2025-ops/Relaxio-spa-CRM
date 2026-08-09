@@ -1,18 +1,40 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { initialUsers, initialCustomers, initialTherapists, initialRooms, initialAgents, initialServices, initialAuditLogs, initialSettings } from './src/data/mockInitialData';
 import { User, Customer, Therapist, Room, Agent, Service, AuditLog, SpaSettings } from './src/types';
 
-// In-Memory Database initialized with initial data (Persisted in server memory & synced with client)
-let dbUsers: User[] = [...initialUsers];
-let dbCustomers: Customer[] = [...initialCustomers];
-let dbTherapists: Therapist[] = [...initialTherapists];
-let dbRooms: Room[] = [...initialRooms];
-let dbAgents: Agent[] = [...initialAgents];
-let dbServices: Service[] = [...initialServices];
-let dbAuditLogs: AuditLog[] = [...initialAuditLogs];
-let dbSettings: SpaSettings = { ...initialSettings };
+const defaultSettings: SpaSettings = {
+  spaName: 'Relaxio Spa & Wellness',
+  tagline: 'Luxury Rejuvenation & Holistic Care',
+  phone: '',
+  email: '',
+  address: '',
+  gstNumber: '',
+  currencySymbol: '₹',
+  inactivityTimeoutMins: 5,
+  autoBackupEnabled: true,
+  theme: 'dark',
+};
+
+// In-Memory Database initialized clean
+let dbUsers: User[] = [
+  {
+    id: 'b903dfd9-2199-4494-93e9-74a86fae2488',
+    name: 'Pankaj Verma',
+    email: 'verpankaj2025@gmail.com',
+    phone: '',
+    role: 'super_admin',
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  }
+];
+let dbCustomers: Customer[] = [];
+let dbTherapists: Therapist[] = [];
+let dbRooms: Room[] = [];
+let dbAgents: Agent[] = [];
+let dbServices: Service[] = [];
+let dbAuditLogs: AuditLog[] = [];
+let dbSettings: SpaSettings = { ...defaultSettings };
 
 let invoiceCounter = 1007;
 
@@ -77,7 +99,7 @@ async function startServer() {
 
     res.json({
       user,
-      token: `fake-jwt-token-${user.id}-${Date.now()}`,
+      token: `auth-token-${user.id}-${Date.now()}`,
     });
   });
 

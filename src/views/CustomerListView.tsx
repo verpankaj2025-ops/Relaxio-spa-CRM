@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Search, Filter, Calendar, Plus, User, Phone, Printer, Edit, Trash2, Eye, ArrowUpDown, Clock, CheckCircle2, Ban } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, Filter, Calendar, Plus, User, Phone, Printer, Edit, Trash2, Eye, ArrowUpDown, Clock, CheckCircle2, Ban, RefreshCw, AlertTriangle, Loader2 } from 'lucide-react';
 import { useSpaData } from '../context/SpaDataContext';
 import { useAuth } from '../context/AuthContext';
 import { Customer, CustomerStatus, CustomerType } from '../types';
@@ -17,80 +17,113 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
   onViewProfile,
   onPrintInvoice,
 }) => {
-  const { customers, deleteCustomer, updateCustomer, settings } = useSpaData();
+  const { customers, therapists, deleteCustomer, updateCustomer, settings, loading, error, refreshData } = useSpaData();
   const { canDeleteCustomer, isAdmin } = useAuth();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month'>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [therapistFilter, setTherapistFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'amount' | 'name'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState(1);
+  const [actionError, setActionError] = useState<string | null>(null);
   const itemsPerPage = 8;
 
-  // Filter Logic
-  const filteredCustomers = customers.filter(c => {
-    // Search Term
-    const matchesSearch =
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.mobile.includes(searchTerm) ||
-      c.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.therapistName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.agentName && c.agentName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      c.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.paymentMethod.toLowerCase().includes(searchTerm.toLowerCase());
+  // Filter Logic memoized
+  const filteredCustomers = useMemo(() => {
+    return customers.filter(c => {
+      // Exclude deleted customers
+      if (c.status === 'Deleted') return false;
 
-    if (!matchesSearch) return false;
+      // Search Term
+      const term = searchTerm.toLowerCase().trim();
+      const matchesSearch =
+        !term ||
+        c.name.toLowerCase().includes(term) ||
+        c.mobile.includes(term) ||
+        c.invoiceNumber.toLowerCase().includes(term) ||
+        c.therapistName.toLowerCase().includes(term) ||
+        (c.agentName && c.agentName.toLowerCase().includes(term)) ||
+        c.roomNumber.toLowerCase().includes(term) ||
+        c.paymentMethod.toLowerCase().includes(term);
 
-    // Date Filter
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (dateFilter === 'today' && c.visitDate !== todayStr) return false;
+      if (!matchesSearch) return false;
 
-    if (dateFilter === 'yesterday') {
-      const y = new Date();
-      y.setDate(y.getDate() - 1);
-      const yStr = y.toISOString().split('T')[0];
-      if (c.visitDate !== yStr) return false;
-    }
+      // Date Filter
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (dateFilter === 'today' && c.visitDate !== todayStr) return false;
 
-    if (dateFilter === 'month') {
-      const currentMonth = todayStr.substring(0, 7);
-      if (!c.visitDate.startsWith(currentMonth)) return false;
-    }
+      if (dateFilter === 'yesterday') {
+        const y = new Date();
+        y.setDate(y.getDate() - 1);
+        const yStr = y.toISOString().split('T')[0];
+        if (c.visitDate !== yStr) return false;
+      }
 
-    // Type Filter
-    if (typeFilter !== 'all' && c.customerType !== typeFilter) return false;
+      if (dateFilter === 'month') {
+        const currentMonth = todayStr.substring(0, 7);
+        if (!c.visitDate.startsWith(currentMonth)) return false;
+      }
 
-    // Status Filter
-    if (statusFilter !== 'all' && c.status !== statusFilter) return false;
+      // Type Filter
+      if (typeFilter !== 'all' && c.customerType !== typeFilter) return false;
 
-    return true;
-  });
+      // Status Filter
+      if (statusFilter !== 'all' && c.status !== statusFilter) return false;
 
-  // Sorting
-  const sortedCustomers = [...filteredCustomers].sort((a, b) => {
-    if (sortBy === 'amount') {
-      return sortOrder === 'desc' ? b.amountPaid - a.amountPaid : a.amountPaid - b.amountPaid;
-    }
-    if (sortBy === 'name') {
-      return sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name);
-    }
-    // Default date
-    return sortOrder === 'desc' ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt);
-  });
+      // Therapist Filter
+      if (therapistFilter !== 'all' && c.therapistName !== therapistFilter) return false;
 
-  // Pagination
+      return true;
+    });
+  }, [customers, searchTerm, dateFilter, typeFilter, statusFilter, therapistFilter]);
+
+  // Sorting memoized
+  const sortedCustomers = useMemo(() => {
+    return [...filteredCustomers].sort((a, b) => {
+      if (sortBy === 'amount') {
+        return sortOrder === 'desc' ? b.amountPaid - a.amountPaid : a.amountPaid - b.amountPaid;
+      }
+      if (sortBy === 'name') {
+        return sortOrder === 'desc' ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name);
+      }
+      // Default date
+      return sortOrder === 'desc' ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt);
+    });
+  }, [filteredCustomers, sortBy, sortOrder]);
+
+  // Pagination & page preservation
   const totalPages = Math.ceil(sortedCustomers.length / itemsPerPage) || 1;
-  const paginatedCustomers = sortedCustomers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  const paginatedCustomers = useMemo(() => {
+    return sortedCustomers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  }, [sortedCustomers, currentPage, itemsPerPage]);
 
   const handleStatusChange = async (c: Customer, newStatus: CustomerStatus) => {
-    await updateCustomer(c.id, { status: newStatus });
+    setActionError(null);
+    try {
+      await updateCustomer(c.id, { status: newStatus });
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to update customer status.');
+    }
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (confirm(`Are you sure you want to delete customer record for ${name}? This action cannot be undone.`)) {
-      await deleteCustomer(id);
+    setActionError(null);
+    if (confirm(`Are you sure you want to soft-delete customer record for ${name}? This record will be archived.`)) {
+      try {
+        await deleteCustomer(id);
+      } catch (err: any) {
+        setActionError(err.message || 'Failed to delete customer record.');
+      }
     }
   };
 
@@ -107,18 +140,53 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={onOpenNewCustomer}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl gold-button-gradient text-xs font-bold shadow-lg shadow-[#D4AF37]/20 cursor-pointer hover:scale-[1.02] active:scale-95 transition-all"
-        >
-          <Plus className="h-4 w-4" />
-          <span>New Customer Check-In</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => refreshData()}
+            title="Refresh database"
+            className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-all cursor-pointer border border-white/10"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-[#D4AF37]' : ''}`} />
+          </button>
+          <button
+            onClick={onOpenNewCustomer}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl gold-button-gradient text-xs font-bold shadow-lg shadow-[#D4AF37]/20 cursor-pointer hover:scale-[1.02] active:scale-95 transition-all"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Customer Check-In</span>
+          </button>
+        </div>
       </div>
+
+      {/* Global DB Error / Retry Banner */}
+      {error && (
+        <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/40 text-red-300 flex items-center justify-between gap-3 text-xs animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-400 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={() => refreshData()}
+            className="px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 font-bold border border-red-500/30 cursor-pointer whitespace-nowrap"
+          >
+            Retry Sync
+          </button>
+        </div>
+      )}
+
+      {/* Action Error Banner */}
+      {actionError && (
+        <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-200 flex items-center justify-between gap-3 text-xs animate-fade-in">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="text-amber-400 font-bold underline cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Search & Filter Suite */}
       <div className="p-4 rounded-3xl glass-panel border border-[#D4AF37]/20 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           {/* Instant Search Bar */}
           <div className="md:col-span-2 relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#D4AF37]" />
@@ -129,7 +197,7 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
                 setSearchTerm(e.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Search name, mobile, invoice #, therapist, agent..."
+              placeholder="Search name, mobile, invoice #..."
               className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-black/40 light:bg-gray-100 border border-white/10 text-white light:text-gray-900 focus:border-[#D4AF37] focus:outline-none"
             />
           </div>
@@ -143,8 +211,8 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
             }}
             className="px-3 py-2 text-xs rounded-xl bg-black/40 light:bg-gray-100 border border-white/10 text-white light:text-gray-900 focus:border-[#D4AF37] focus:outline-none"
           >
-            <option value="all" className="bg-gray-900">All Time Dates</option>
-            <option value="today" className="bg-gray-900">Today's Guests</option>
+            <option value="all" className="bg-gray-900">All Dates</option>
+            <option value="today" className="bg-gray-900">Today</option>
             <option value="yesterday" className="bg-gray-900">Yesterday</option>
             <option value="month" className="bg-gray-900">This Month</option>
           </select>
@@ -163,6 +231,21 @@ export const CustomerListView: React.FC<CustomerListViewProps> = ({
             <option value="Agent Customer" className="bg-gray-900">Agent Customer</option>
             <option value="Referral" className="bg-gray-900">Referral</option>
             <option value="Membership" className="bg-gray-900">Membership</option>
+          </select>
+
+          {/* Therapist Filter */}
+          <select
+            value={therapistFilter}
+            onChange={e => {
+              setTherapistFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-3 py-2 text-xs rounded-xl bg-black/40 light:bg-gray-100 border border-white/10 text-white light:text-gray-900 focus:border-[#D4AF37] focus:outline-none"
+          >
+            <option value="all" className="bg-gray-900">All Therapists</option>
+            {therapists.map(t => (
+              <option key={t.id} value={t.name} className="bg-gray-900">{t.name}</option>
+            ))}
           </select>
         </div>
 

@@ -20,8 +20,8 @@ export const CustomerProfileModal: React.FC<CustomerProfileModalProps> = ({
 
   if (!customer) return null;
 
-  // Find all historical visits for this customer's mobile number
-  const visitHistory = customers.filter(c => c.mobile === customer.mobile);
+  // Find all historical visits for this customer's mobile number (excluding soft-deleted records)
+  const visitHistory = customers.filter(c => c.mobile.trim() === customer.mobile.trim() && c.status !== 'Deleted');
   const totalSpend = visitHistory.reduce((sum, c) => sum + (c.status !== 'Cancelled' ? c.amountPaid : 0), 0);
 
   // Preferred Therapist

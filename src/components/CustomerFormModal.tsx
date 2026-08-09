@@ -15,7 +15,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   onClose,
   initialCustomer,
 }) => {
-  const { therapists, rooms, agents, services, addCustomer, updateCustomer, checkDuplicateMobile, settings } = useSpaData();
+  const { customers, therapists, rooms, agents, services, addCustomer, updateCustomer, checkDuplicateMobile, settings } = useSpaData();
 
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
@@ -35,9 +35,11 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   const [photoUrl, setPhotoUrl] = useState('');
   const [status, setStatus] = useState<CustomerStatus>('Running');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Auto set defaults if empty
   useEffect(() => {
+    setFormError(null);
     if (initialCustomer) {
       setName(initialCustomer.name);
       setMobile(initialCustomer.mobile);
@@ -105,9 +107,20 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+
     if (!name.trim() || !mobile.trim()) {
-      alert('Customer Name and Mobile Number are required.');
+      setFormError('Customer Name and Mobile Number are required.');
       return;
+    }
+
+    // Check for duplicate active running customer
+    if (!initialCustomer) {
+      const existingRunning = customers.find(c => c.mobile.trim() === mobile.trim() && c.status === 'Running');
+      if (existingRunning) {
+        setFormError(`Validation Error: Customer with mobile ${mobile} already has an active 'Running' session (${existingRunning.invoiceNumber}). Please mark it Completed or Cancelled before creating a new check-in.`);
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -124,10 +137,10 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
         visitDate,
         checkInTime,
         checkOutTime,
-        roomId: roomId || 'rm-101',
-        roomNumber: selectedRoom ? selectedRoom.roomNumber : 'Room 101',
-        therapistId: therapistId || 'th-1',
-        therapistName: selectedTherapist ? selectedTherapist.name : 'Maya Lin',
+        roomId: roomId || undefined,
+        roomNumber: selectedRoom ? selectedRoom.roomNumber : (roomId || undefined),
+        therapistId: therapistId || undefined,
+        therapistName: selectedTherapist ? selectedTherapist.name : (therapistId || undefined),
         amountPaid: Number(amountPaid),
         paymentMethod,
         customerType,
@@ -146,7 +159,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
       }
       onClose();
     } catch (err: any) {
-      alert(err.message || 'Error saving customer entry');
+      setFormError(err.message || 'Error saving customer entry to database.');
     } finally {
       setIsSubmitting(false);
     }
@@ -179,6 +192,14 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+          {/* Error Banner */}
+          {formError && (
+            <div className="p-3.5 rounded-2xl bg-red-500/15 border border-red-500/40 text-red-300 flex items-center gap-2 text-xs font-semibold animate-fade-in">
+              <ShieldAlert className="h-4 w-4 shrink-0 text-red-400" />
+              <span>{formError}</span>
+            </div>
+          )}
+
           {/* Duplicate Mobile Banner */}
           {duplicateInfo.found && !initialCustomer && (
             <div className="p-3.5 rounded-2xl bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-between gap-3 animate-fade-in">

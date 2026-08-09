@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { User, UserRole } from '../types';
 import { apiService } from '../services/api';
-import { initialUsers } from '../data/mockInitialData';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
 interface AuthContextType {
@@ -238,7 +237,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const isStaff = user?.role === 'staff' || isAdmin;
 
   const canExport = isSuperAdmin;
-  const canManageUsers = isSuperAdmin;
+  const canManageUsers = isSuperAdmin || user?.role === 'admin';
   const canDeleteCustomer = isSuperAdmin || user?.role === 'admin';
 
   return (

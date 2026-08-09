@@ -10,6 +10,7 @@ export interface User {
   role: UserRole;
   status: UserStatus;
   createdAt: string;
+  updatedAt?: string;
   lastLogin?: string;
 }
 
@@ -17,7 +18,7 @@ export type PaymentMethod = 'Cash' | 'UPI' | 'Card' | 'Wallet';
 
 export type CustomerType = 'Walk In' | 'Agent Customer' | 'Referral' | 'Membership';
 
-export type CustomerStatus = 'Completed' | 'Running' | 'Cancelled';
+export type CustomerStatus = 'Completed' | 'Running' | 'Cancelled' | 'Deleted';
 
 export interface Customer {
   id: string;
